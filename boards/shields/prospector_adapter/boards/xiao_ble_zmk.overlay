@@ -71,6 +71,7 @@ disp_spi: &spi3 {
            height = <320>;
            pixel-format = <0>;
            rotation = <270>;
+           display-inversion;
        };
    };
 };
