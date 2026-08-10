@@ -20,7 +20,8 @@ lv_obj_t *zmk_display_status_screen() {
     lv_obj_set_style_bg_opa(screen, 255, LV_PART_MAIN);
 
     zmk_widget_line_segments_init(&line_segments_widget, screen);
-    lv_obj_set_size(zmk_widget_line_segments_obj(&line_segments_widget), 274, 206);
+    lv_obj_set_size(zmk_widget_line_segments_obj(&line_segments_widget),
+                    LINE_SEGMENTS_WIDTH, LINE_SEGMENTS_HEIGHT);
     lv_obj_align(zmk_widget_line_segments_obj(&line_segments_widget), LV_ALIGN_CENTER, 0, 0);
 
     zmk_widget_layer_label_init(&layer_label_widget, screen);

@@ -63,7 +63,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define TIMER_PERIOD_15HZ       66      // Timer period for 15Hz updates (ms)
 #define TIMER_PERIOD_2HZ        500     // Timer period for 2Hz idle wobble (ms)
 
-static const int16_t grid_cx[GRID_COLS] = {18, 52, 86, 120, 154, 188, 222, 256};
+BUILD_ASSERT(GRID_COLS * GRID_ROWS <= 64, "Field grid exclusion mask is too small");
+
+static const int16_t grid_cx[GRID_COLS] = {18, 52, 86, 120, 154, 188, 222, 256, 290};
 static const int16_t grid_cy[GRID_ROWS] = {18, 52, 86, 120, 154, 188};
 
 static inline int angle_to_index(float angle) {

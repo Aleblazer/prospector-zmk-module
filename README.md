@@ -1,15 +1,16 @@
-# Prospector ZMK Module
+# Prospector ILI9341 ZMK Module
 
-This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides custom status screen support for the [Prospector](https://github.com/carrefinho/prospector) display dongle.
+This is a 320x240 ILI9341 port of the [Prospector ZMK module](https://github.com/carrefinho/prospector-zmk-module/tree/feat/new-status-screens). It provides custom status screens for a Xiao BLE dongle using an SPI ILI9341 panel in landscape orientation.
 
 ![Four status screen layouts for Prospector](docs/images/status-screen-update-hero.png)
 
 > [!IMPORTANT]
-> This branch is a work-in-progress and is only compatible with the Zephyr 4.1 version of ZMK (current main).
+> This port follows the upstream `feat/new-status-screens` branch and targets its Zephyr 4.1-era ZMK API.
 
 ## Table of Contents
 
 - [Features](#features)
+- [Display hardware](#display-hardware)
 - [Installation](#installation)
 - [Status Screens](#status-screens)
 - [Usage](#usage)
@@ -27,6 +28,24 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 - Active modifier display
 - Caps word indicator
 
+## Display hardware
+
+The port uses Zephyr's native `ilitek,ili9341` driver in RGB565 mode. The controller's native 240x320 geometry is rotated 270 degrees to expose a 320x240 landscape display to LVGL.
+
+The existing Prospector/Xiao BLE signal assignment is retained:
+
+| ILI9341 signal | Xiao BLE connection |
+| --- | --- |
+| SCK | nRF P1.13 |
+| MOSI / SDI | nRF P1.15 |
+| MISO / SDO | nRF P1.10 (not read by the driver) |
+| CS | `xiao_d 9` |
+| D/C | `xiao_d 7` |
+| RESET | `xiao_d 3` |
+| Backlight | nRF P1.11 (PWM) |
+
+The ambient light sensor remains on I2C at address `0x39`, with its interrupt on `xiao_d 2`. Use 3.3 V logic; adapt the backlight drive to the current requirements of your display breakout.
+
 ## Installation
 
 Your ZMK keyboard should be set up with a dongle as central.
@@ -38,16 +57,16 @@ manifest:
   remotes:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
-    - name: carrefinho                            # <--- add this
-      url-base: https://github.com/carrefinho     # <--- and this
+    - name: your-github
+      url-base: https://github.com/YOUR_GITHUB_USERNAME
   projects:
     - name: zmk
       remote: zmkfirmware
       revision: main
       import: app/west.yml
-    - name: prospector-zmk-module                 # <--- and these
-      remote: carrefinho                          # <---
-      revision: feat/new-status-screens           # <---
+    - name: prospector-zmk-module
+      remote: your-github
+      revision: codex/ili9341-port
   self:
     path: config
 ```
@@ -62,6 +81,8 @@ include:
 ```
 
 For more information on ZMK Modules and building locally, see [the ZMK docs page on modules.](https://zmk.dev/docs/features/modules)
+
+Replace the example remote and revision with the location where you publish this port.
 
 ## Status Screens
 
@@ -130,6 +151,18 @@ If you encounter a `region 'RAM' overflowed` error when building, add the follow
 ```ini
 CONFIG_LV_Z_VDB_SIZE=25
 ```
+
+### Incorrect orientation
+
+The normal orientation is 270 degrees. To flip the complete UI by 180 degrees, add:
+
+```ini
+CONFIG_PROSPECTOR_ROTATE_DISPLAY_180=y
+```
+
+### Inverted panel colors
+
+Some ILI9341 modules require display inversion. If white and black are reversed, add `display-inversion;` to the `ili9341` node in `boards/shields/prospector_adapter/boards/xiao_ble_zmk.overlay`.
 
 ## Known Issues
 

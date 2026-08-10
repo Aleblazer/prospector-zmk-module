@@ -7,6 +7,7 @@
 #include "output.h"
 
 #include <fonts.h>
+#include <display_dimensions.h>
 
 static struct zmk_widget_modifier_indicator modifier_indicator_widget;
 static struct zmk_widget_wpm_meter wpm_meter_widget;
@@ -32,7 +33,8 @@ lv_obj_t *zmk_display_status_screen() {
     lv_obj_set_pos(zmk_widget_battery_circles_obj(&battery_circles_widget), 11, 170);
 
     zmk_widget_output_init(&output_widget, screen);
-    lv_obj_set_pos(zmk_widget_output_obj(&output_widget), 148, 170);
+    lv_obj_set_pos(zmk_widget_output_obj(&output_widget),
+                   PROSPECTOR_DISPLAY_WIDTH - 132, 170);
 
     return screen;
 }

@@ -8,6 +8,7 @@
 #include <zmk/event_manager.h>
 
 #include <fonts.h>
+#include <display_dimensions.h>
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -227,7 +228,8 @@ void zmk_widget_battery_bar_set_compact(bool compact) {
         lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
 
         int32_t current_width = lv_obj_get_width(widget->obj);
-        int32_t target_width = compact ? 227 : 280;
+        int32_t target_width = compact ? PROSPECTOR_DISPLAY_WIDTH - 53
+                                       : PROSPECTOR_DISPLAY_WIDTH;
 
         lv_anim_set_values(&a, current_width, target_width);
         lv_anim_start(&a);

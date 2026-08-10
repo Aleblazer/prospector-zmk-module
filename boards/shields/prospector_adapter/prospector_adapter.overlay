@@ -1,6 +1,6 @@
 / {
    chosen {
-      zephyr,display = &st7789;
+      zephyr,display = &ili9341;
    };
 
    prospector_green_theme: prospector_green_theme {

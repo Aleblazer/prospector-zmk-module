@@ -4,13 +4,13 @@
 #include <zephyr/kernel.h>
 
 // Grid configuration
-#define LINE_SEGMENTS_GRID_COLS 8
+#define LINE_SEGMENTS_GRID_COLS 9
 #define LINE_SEGMENTS_GRID_ROWS 6
 #define LINE_SEGMENTS_SPACING 34
 #define LINE_SEGMENTS_GRID_OFFSET 18
 
 // Widget dimensions
-#define LINE_SEGMENTS_WIDTH 274
+#define LINE_SEGMENTS_WIDTH 308
 #define LINE_SEGMENTS_HEIGHT 206
 
 struct zmk_widget_line_segments {

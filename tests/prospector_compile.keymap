@@ -1,0 +1,32 @@
+#include <physical_layouts.dtsi>
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/keys.h>
+
+/ {
+    chosen {
+        zmk,physical-layout = &prospector_test_layout;
+    };
+
+    prospector_test_transform: prospector_test_transform {
+        compatible = "zmk,matrix-transform";
+        columns = <1>;
+        rows = <1>;
+        map = <0>;
+    };
+
+    prospector_test_layout: prospector_test_layout {
+        compatible = "zmk,physical-layout";
+        display-name = "Prospector compile test";
+        transform = <&prospector_test_transform>;
+        keys = <&key_physical_attrs 100 100 0 0 0 0 0>;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        base {
+            display-name = "Base";
+            bindings = <&kp A>;
+        };
+    };
+};

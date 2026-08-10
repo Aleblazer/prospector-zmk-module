@@ -16,10 +16,6 @@ choice ZMK_DISPLAY_WORK_QUEUE
     default ZMK_DISPLAY_WORK_QUEUE_DEDICATED
 endchoice
 
-choice ST7789V_PIXEL_FORMAT
-	default ST7789V_RGB565
-endchoice
-
 config LV_Z_VDB_SIZE
     default 50
 
