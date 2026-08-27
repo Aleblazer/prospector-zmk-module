@@ -32,6 +32,7 @@ if(CONFIG_SHIELD_PROSPECTOR_ADAPTER)
   elseif(CONFIG_PROSPECTOR_STATUS_SCREEN_OPERATOR)
     file(GLOB layout_sources src/layouts/operator/*.c)
     list(FILTER layout_sources EXCLUDE REGEX "status_screen\\.c$")
+    list(FILTER layout_sources EXCLUDE REGEX "(layer_display|output)\\.c$")
     zephyr_library_sources(${layout_sources})
   endif()
 

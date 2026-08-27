@@ -9,6 +9,7 @@
 #include <zmk/hid.h>
 
 #include <fonts.h>
+#include <symbols.h>
 #include <modifier_order.h>
 #include "display_colors.h"
 
@@ -83,40 +84,41 @@ ZMK_SUBSCRIPTION(widget_modifier_indicator, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(widget_modifier_indicator, zmk_caps_word_state_changed);
 #endif
 
-static lv_obj_t *create_separator(lv_obj_t *parent) {
-    lv_obj_t *sep = lv_obj_create(parent);
-    lv_obj_set_size(sep, 2, 24);
-    lv_obj_set_style_bg_color(sep, lv_color_hex(DISPLAY_COLOR_MOD_SEPARATOR), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(sep, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(sep, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(sep, 0, LV_PART_MAIN);
-    return sep;
-}
-
-static lv_obj_t *create_mod_label(lv_obj_t *parent, const char *text) {
+static lv_obj_t *create_mod_label(lv_obj_t *parent, const char *text, bool use_symbols) {
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_text(label, text);
-    lv_obj_set_style_text_font(label, &FG_Medium_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(label,
+                               use_symbols ? &Symbols_Regular_28
+                                           : &DINishCondensed_SemiBold_20,
+                               LV_PART_MAIN);
     lv_obj_set_style_text_color(label, lv_color_hex(DISPLAY_COLOR_MOD_INACTIVE), LV_PART_MAIN);
+    lv_obj_center(label);
     return label;
 }
 
 int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 230, 24);
+    lv_obj_set_size(widget->obj, 46, 68);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
 
-    lv_obj_set_flex_flow(widget->obj, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(widget->obj, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
+    bool use_symbols = modifier_order_uses_symbols();
     for (int i = 0; i < 4; i++) {
-        widget->mod_labels[i] = create_mod_label(widget->obj, modifier_order_get_text(i));
-        if (i < 3) {
-            create_separator(widget->obj);
-        }
+        lv_obj_t *cell = lv_obj_create(widget->obj);
+        widget->mod_containers[i] = cell;
+        lv_obj_set_size(cell, 22, 32);
+        lv_obj_set_pos(cell, (i % 2) * 24, (i / 2) * 36);
+        lv_obj_set_style_bg_color(cell, lv_color_hex(0x101826), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(cell, lv_color_hex(0x263551), LV_PART_MAIN);
+        lv_obj_set_style_border_width(cell, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(cell, 2, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(cell, 0, LV_PART_MAIN);
+
+        const char *text = use_symbols ? modifier_order_get_symbol(i)
+                                       : modifier_order_get_text(i);
+        widget->mod_labels[i] = create_mod_label(cell, text, use_symbols);
     }
 
     sys_slist_append(&widgets, &widget->node);

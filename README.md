@@ -6,6 +6,11 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 
 > [!IMPORTANT]
 > This branch is a work-in-progress and is only compatible with the Zephyr 4.1 version of ZMK (current main).
+>
+> The `codex/st7789-284x76-port` branch targets the 2.25-inch ST7789 panel
+> with a 76×284 visible window, used as a 284×76 landscape display. Operator
+> is the first adapted layout; Field is still pending. Classic and Radii retain
+> their original geometry and are not usable on this display yet.
 
 ## Table of Contents
 
@@ -38,16 +43,16 @@ manifest:
   remotes:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
-    - name: carrefinho                            # <--- add this
-      url-base: https://github.com/carrefinho     # <--- and this
+    - name: aleblazer                             # <--- add this
+      url-base: https://github.com/Aleblazer      # <--- and this
   projects:
     - name: zmk
       remote: zmkfirmware
       revision: main
       import: app/west.yml
     - name: prospector-zmk-module                 # <--- and these
-      remote: carrefinho                          # <---
-      revision: feat/new-status-screens           # <---
+      remote: aleblazer                           # <---
+      revision: codex/st7789-284x76-port          # <---
   self:
     path: config
 ```

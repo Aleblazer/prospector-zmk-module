@@ -48,13 +48,12 @@ static void wpm_meter_render(int active_bars) {
         }
 
         if (peak_position > active_bars && peak_position > 0) {
-            int bar_width = 8;
-            int bar_gap = 2;
-            int total_width = WPM_BAR_COUNT * bar_width + (WPM_BAR_COUNT - 1) * bar_gap;
-            int start_x = (260 - total_width) / 2;
+            int total_width = WPM_BAR_COUNT * WPM_BAR_WIDTH +
+                              (WPM_BAR_COUNT - 1) * WPM_BAR_GAP;
+            int start_x = (WPM_METER_WIDTH - total_width) / 2;
             int peak_slot = (peak_position > active_bars + 1) ? (peak_position - 1) : active_bars;
             if (peak_slot >= WPM_BAR_COUNT) peak_slot = WPM_BAR_COUNT - 1;
-            int peak_x = start_x + peak_slot * (bar_width + bar_gap) + 2;
+            int peak_x = start_x + peak_slot * (WPM_BAR_WIDTH + WPM_BAR_GAP) + 1;
             lv_obj_set_pos(widget->peak_indicator, peak_x, 0);
             lv_obj_clear_flag(widget->peak_indicator, LV_OBJ_FLAG_HIDDEN);
         } else {
@@ -157,21 +156,19 @@ ZMK_SUBSCRIPTION(widget_wpm_meter_layer, zmk_layer_state_changed);
 
 int zmk_widget_wpm_meter_init(struct zmk_widget_wpm_meter *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 260, 90);
+    lv_obj_set_size(widget->obj, WPM_METER_WIDTH, WPM_METER_HEIGHT);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
 
-    int bar_width = 8;
-    int bar_gap = 2;
-    int bar_height = 90;
-    int total_width = WPM_BAR_COUNT * bar_width + (WPM_BAR_COUNT - 1) * bar_gap;
-    int start_x = (260 - total_width) / 2;
+    int total_width = WPM_BAR_COUNT * WPM_BAR_WIDTH +
+                      (WPM_BAR_COUNT - 1) * WPM_BAR_GAP;
+    int start_x = (WPM_METER_WIDTH - total_width) / 2;
 
     for (int i = 0; i < WPM_BAR_COUNT; i++) {
         widget->bars[i] = lv_obj_create(widget->obj);
-        lv_obj_set_size(widget->bars[i], bar_width, bar_height);
-        lv_obj_set_pos(widget->bars[i], start_x + i * (bar_width + bar_gap), 0);
+        lv_obj_set_size(widget->bars[i], WPM_BAR_WIDTH, WPM_METER_HEIGHT);
+        lv_obj_set_pos(widget->bars[i], start_x + i * (WPM_BAR_WIDTH + WPM_BAR_GAP), 0);
         lv_obj_set_style_bg_color(widget->bars[i], lv_color_hex(DISPLAY_COLOR_WPM_BAR_INACTIVE), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(widget->bars[i], LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_border_width(widget->bars[i], 0, LV_PART_MAIN);
@@ -180,7 +177,7 @@ int zmk_widget_wpm_meter_init(struct zmk_widget_wpm_meter *widget, lv_obj_t *par
     }
 
     widget->peak_indicator = lv_obj_create(widget->obj);
-    lv_obj_set_size(widget->peak_indicator, 4, bar_height);
+    lv_obj_set_size(widget->peak_indicator, 3, WPM_METER_HEIGHT);
     lv_obj_set_style_bg_color(widget->peak_indicator, lv_color_hex(0x505050), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(widget->peak_indicator, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->peak_indicator, 0, LV_PART_MAIN);
@@ -193,20 +190,22 @@ int zmk_widget_wpm_meter_init(struct zmk_widget_wpm_meter *widget, lv_obj_t *par
     lv_obj_set_style_text_color(widget->wpm_label, lv_color_hex(DISPLAY_COLOR_WPM_TEXT), LV_PART_MAIN);
     lv_obj_set_style_bg_color(widget->wpm_label, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(widget->wpm_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_pad_hor(widget->wpm_label, 6, LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(widget->wpm_label, 4, LV_PART_MAIN);
-    lv_obj_align(widget->wpm_label, LV_ALIGN_TOP_LEFT, -7, -9);
+    lv_obj_set_style_pad_hor(widget->wpm_label, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(widget->wpm_label, 2, LV_PART_MAIN);
+    lv_obj_align(widget->wpm_label, LV_ALIGN_TOP_LEFT, -3, -5);
 
     widget->layer_label = lv_label_create(widget->obj);
     lv_label_set_text(widget->layer_label, "");
-    lv_obj_set_style_text_font(widget->layer_label, &DINishExpanded_Light_36, LV_PART_MAIN);
+    lv_obj_set_width(widget->layer_label, 112);
+    lv_label_set_long_mode(widget->layer_label, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_style_text_align(widget->layer_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(widget->layer_label, &DINishCondensed_SemiBold_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(widget->layer_label, lv_color_hex(DISPLAY_COLOR_LAYER_TEXT), LV_PART_MAIN);
     lv_obj_set_style_bg_color(widget->layer_label, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(widget->layer_label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_pad_hor(widget->layer_label, 8, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(widget->layer_label, 7, LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(widget->layer_label, 3, LV_PART_MAIN);
-    lv_obj_align(widget->layer_label, LV_ALIGN_BOTTOM_RIGHT, 9, 7);
+    lv_obj_set_style_pad_hor(widget->layer_label, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(widget->layer_label, 2, LV_PART_MAIN);
+    lv_obj_align(widget->layer_label, LV_ALIGN_BOTTOM_RIGHT, 3, 4);
 
     sys_slist_append(&widgets, &widget->node);
     widget_wpm_meter_init();

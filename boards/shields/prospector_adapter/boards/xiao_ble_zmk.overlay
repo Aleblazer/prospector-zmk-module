@@ -67,10 +67,13 @@ disp_spi: &spi3 {
            mipi-max-frequency = <30000000>;
            mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
            reg = <0>;
-           width = <240>;
-           height = <280>;
-           x-offset = <0>;
-           y-offset = <20>;
+           /* Native visible window for the 2.25in 76x284 ST7789 panel.
+            * display_rotate_init.c rotates this to a 284x76 landscape canvas.
+            */
+           width = <76>;
+           height = <284>;
+           x-offset = <82>;
+           y-offset = <18>;
            vcom = <0x19>;
            gctrl = <0x35>;
            vrhs = <0x12>;

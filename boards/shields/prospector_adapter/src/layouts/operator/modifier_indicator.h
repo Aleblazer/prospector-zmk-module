@@ -6,6 +6,7 @@
 struct zmk_widget_modifier_indicator {
     sys_snode_t node;
     lv_obj_t *obj;
+    lv_obj_t *mod_containers[4];
     lv_obj_t *mod_labels[4];
 };
 

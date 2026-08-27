@@ -17,7 +17,7 @@ static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 #endif
 
 #define LOW_BATTERY_THRESHOLD 20
-#define ARC_WIDTH_CONNECTED 6
+#define ARC_WIDTH_CONNECTED 4
 #define ARC_WIDTH_DISCONNECTED 2
 #define ARC_WIDTH_ANIM_DURATION 200
 #define ARC_VALUE_ANIM_DURATION 300
@@ -241,10 +241,8 @@ static void update_peripheral_display(uint8_t source) {
         lv_obj_remove_style(label, &style_label_connected, LV_PART_MAIN);
         lv_obj_add_style(label, label_style, LV_PART_MAIN);
 
-        if (PERIPHERAL_COUNT == 1) {
-            lv_label_set_text(label, connected ? "PRPH" : "DISC");
-        } else if (PERIPHERAL_COUNT == 2) {
-            char text[4];
+        if (PERIPHERAL_COUNT <= 2) {
+            char text[5];
             if (connected && level > 0) {
                 snprintf(text, sizeof(text), "%d", level);
             } else {
@@ -361,19 +359,18 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
     init_styles();
 
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 132, 62);
+    lv_obj_set_size(widget->obj, 70, 68);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
 
     if (PERIPHERAL_COUNT == 1) {
         int arc_size = 58;
-        int arc_left = 132 - 6 - arc_size;
 
         lv_obj_t *arc = lv_arc_create(widget->obj);
         peripheral_arcs[0] = arc;
         lv_obj_set_size(arc, arc_size, arc_size);
-        lv_obj_align(arc, LV_ALIGN_RIGHT_MID, -6, 0);
+        lv_obj_center(arc);
         lv_arc_set_range(arc, 0, 100);
         lv_arc_set_value(arc, 0);
         lv_arc_set_bg_angles(arc, 0, 360);
@@ -385,36 +382,27 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
         lv_obj_remove_style(arc, NULL, LV_PART_KNOB);
         lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
 
-        lv_obj_t *label_box = lv_obj_create(widget->obj);
+        lv_obj_t *label_box = lv_obj_create(arc);
         peripheral_label_boxes[0] = label_box;
-        lv_obj_set_size(label_box, arc_left - 6, 25);
-        lv_obj_set_pos(label_box, 0, 2);
+        lv_obj_set_size(label_box, 42, 22);
         lv_obj_set_style_bg_opa(label_box, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_radius(label_box, 2, LV_PART_MAIN);
         lv_obj_set_style_border_width(label_box, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(label_box, 0, LV_PART_MAIN);
         lv_obj_add_style(label_box, &style_label_box_disconnected, LV_PART_MAIN);
+        lv_obj_center(label_box);
 
         lv_obj_t *title_label = lv_label_create(label_box);
         peripheral_labels[0] = title_label;
-        lv_label_set_text(title_label, "DISC");
-        lv_obj_set_style_text_font(title_label, &FG_Medium_20, LV_PART_MAIN);
+        lv_label_set_text(title_label, "-");
+        lv_obj_set_style_text_font(title_label, &DINishCondensed_SemiBold_20, LV_PART_MAIN);
         lv_obj_add_style(title_label, &style_label_disconnected, LV_PART_MAIN);
         lv_obj_align(title_label, LV_ALIGN_CENTER, 0, 1);
 
-        lv_obj_t *battery_label = lv_label_create(widget->obj);
-        peripheral_battery_labels[0] = battery_label;
-        lv_label_set_text(battery_label, "-");
-        lv_obj_set_style_text_font(battery_label, &FG_Medium_26, LV_PART_MAIN);
-        lv_obj_set_style_text_letter_space(battery_label, -1, LV_PART_MAIN);
-        lv_obj_set_style_text_align(battery_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-        lv_obj_add_style(battery_label, &style_battery_label_disconnected, LV_PART_MAIN);
-        lv_obj_align_to(battery_label, label_box, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 4);
-
     } else if (PERIPHERAL_COUNT == 2) {
-        int arc_size = 58;
-        int y_center = (62 - arc_size) / 2;
-        int spacing = 66;
+        int arc_size = 34;
+        int y_center = (68 - arc_size) / 2;
+        int spacing = 36;
 
         for (int i = 0; i < 2; i++) {
             lv_obj_t *arc = lv_arc_create(widget->obj);
@@ -434,24 +422,27 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
 
             lv_obj_t *label_box = lv_obj_create(arc);
             peripheral_label_boxes[i] = label_box;
-            lv_obj_set_size(label_box, 25, 25);
-            lv_obj_set_pos(label_box, 0, 0);
+            lv_obj_set_size(label_box, 24, 22);
             lv_obj_set_style_bg_opa(label_box, LV_OPA_COVER, LV_PART_MAIN);
             lv_obj_set_style_radius(label_box, 2, LV_PART_MAIN);
             lv_obj_set_style_border_width(label_box, 0, LV_PART_MAIN);
             lv_obj_set_style_pad_all(label_box, 0, LV_PART_MAIN);
             lv_obj_add_style(label_box, &style_label_box_disconnected, LV_PART_MAIN);
+            lv_obj_center(label_box);
 
             lv_obj_t *label = lv_label_create(label_box);
             peripheral_labels[i] = label;
             lv_label_set_text(label, "-");
-            lv_obj_set_style_text_font(label, &DINish_Medium_24, LV_PART_MAIN);
+            lv_obj_set_style_text_font(label, &DINishCondensed_SemiBold_20, LV_PART_MAIN);
             lv_obj_set_style_text_letter_space(label, -1, LV_PART_MAIN);
             lv_obj_add_style(label, &style_label_disconnected, LV_PART_MAIN);
             lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
         }
 
     } else {
+        /* Three or more peripherals retain the compact bar treatment. This
+         * branch is primarily designed around a two-half split keyboard.
+         */
         int box_width = 24;
         int box_height = 23;
         int bar_width = 8;

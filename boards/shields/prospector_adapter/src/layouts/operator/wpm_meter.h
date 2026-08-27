@@ -6,6 +6,11 @@
 #define WPM_BAR_COUNT 26
 #define WPM_MAX 120
 
+#define WPM_METER_WIDTH 158
+#define WPM_METER_HEIGHT 68
+#define WPM_BAR_WIDTH 5
+#define WPM_BAR_GAP 1
+
 struct zmk_widget_wpm_meter {
     sys_snode_t node;
     lv_obj_t *obj;
