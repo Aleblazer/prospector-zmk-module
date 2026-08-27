@@ -7,7 +7,7 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 > [!IMPORTANT]
 > This branch is a work-in-progress and is only compatible with the Zephyr 4.1 version of ZMK (current main).
 >
-> The `codex/st7789-284x76-port` branch targets the 2.25-inch ST7789 panel
+> The `feat/st7789-wide-port` branch targets the 2.25-inch ST7789 panel
 > with a 76×284 visible window, used as a 284×76 landscape display. Operator
 > is the first adapted layout; Field is still pending. Classic and Radii retain
 > their original geometry and are not usable on this display yet.
@@ -57,7 +57,7 @@ manifest:
       import: app/west.yml
     - name: prospector-zmk-module                 # <--- and these
       remote: aleblazer                           # <---
-      revision: codex/st7789-284x76-port          # <---
+      revision: feat/st7789-wide-port             # <---
   self:
     path: config
 ```
