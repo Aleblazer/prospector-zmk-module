@@ -12,6 +12,11 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 > is the first adapted layout; Field is still pending. Classic and Radii retain
 > their original geometry and are not usable on this display yet.
 
+The wide-screen branch supports both the original Xiao controller and
+nice!nano v2-compatible Pro Micro footprint nRF52840 controllers. The Pro Micro
+wiring is documented in
+`boards/shields/prospector_adapter/boards/nice_nano_zmk.overlay`.
+
 ## Table of Contents
 
 - [Features](#features)
