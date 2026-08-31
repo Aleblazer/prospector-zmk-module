@@ -17,7 +17,7 @@ lv_obj_t *zmk_display_status_screen() {
     lv_obj_set_pos(zmk_widget_battery_circles_obj(&battery_circles_widget), 2, 4);
 
     zmk_widget_modifier_indicator_init(&modifier_indicator_widget, screen);
-    lv_obj_set_pos(zmk_widget_modifier_indicator_obj(&modifier_indicator_widget), 72, 4);
+    lv_obj_set_pos(zmk_widget_modifier_indicator_obj(&modifier_indicator_widget), 74, 4);
 
     zmk_widget_wpm_meter_init(&wpm_meter_widget, screen);
     lv_obj_set_pos(zmk_widget_wpm_meter_obj(&wpm_meter_widget), 124, 4);

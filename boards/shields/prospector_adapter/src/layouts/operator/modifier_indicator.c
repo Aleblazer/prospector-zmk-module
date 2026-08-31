@@ -15,6 +15,9 @@
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
+/* LVGL uses 256 as 100% transform scale. */
+#define MOD_SYMBOL_SCALE 230
+
 struct modifier_indicator_state {
     bool mods[4];
 #ifdef CONFIG_DT_HAS_ZMK_BEHAVIOR_CAPS_WORD_ENABLED
@@ -92,13 +95,17 @@ static lv_obj_t *create_mod_label(lv_obj_t *parent, const char *text, bool use_s
                                            : &DINishCondensed_SemiBold_20,
                                LV_PART_MAIN);
     lv_obj_set_style_text_color(label, lv_color_hex(DISPLAY_COLOR_MOD_INACTIVE), LV_PART_MAIN);
+    if (use_symbols) {
+        lv_obj_set_style_transform_scale_x(label, MOD_SYMBOL_SCALE, LV_PART_MAIN);
+        lv_obj_set_style_transform_scale_y(label, MOD_SYMBOL_SCALE, LV_PART_MAIN);
+    }
     lv_obj_center(label);
     return label;
 }
 
 int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 52, 68);
+    lv_obj_set_size(widget->obj, 46, 68);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
@@ -108,8 +115,8 @@ int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *wid
     for (int i = 0; i < 4; i++) {
         lv_obj_t *cell = lv_obj_create(widget->obj);
         widget->mod_containers[i] = cell;
-        lv_obj_set_size(cell, 26, 34);
-        lv_obj_set_pos(cell, (i % 2) * 26, (i / 2) * 34);
+        lv_obj_set_size(cell, 22, 32);
+        lv_obj_set_pos(cell, (i % 2) * 24, (i / 2) * 36);
         lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, LV_PART_MAIN);
         lv_obj_set_style_border_width(cell, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(cell, 0, LV_PART_MAIN);
