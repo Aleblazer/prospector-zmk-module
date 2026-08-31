@@ -24,6 +24,8 @@ static int peak_decay_counter = 0;
 static const float smoothing_factor_up = 0.3f;
 static const float smoothing_factor_down = 0.05f;
 
+#define LAYER_LABEL_MAX_WIDTH 96
+
 struct wpm_meter_state {
     uint8_t wpm;
 };
@@ -31,6 +33,21 @@ struct wpm_meter_state {
 struct layer_state {
     uint8_t index;
 };
+
+static void layer_label_set_text(lv_obj_t *label, const char *text) {
+    /* Let the black knockout follow the rendered name, but keep unusually
+     * long names from covering too much of the WPM gauge.
+     */
+    lv_obj_set_width(label, LV_SIZE_CONTENT);
+    lv_label_set_text(label, text);
+    lv_obj_update_layout(label);
+
+    if (lv_obj_get_width(label) > LAYER_LABEL_MAX_WIDTH) {
+        lv_obj_set_width(label, LAYER_LABEL_MAX_WIDTH);
+    }
+
+    lv_obj_align(label, LV_ALIGN_BOTTOM_RIGHT, 3, 4);
+}
 
 static void wpm_meter_render(int active_bars) {
     struct zmk_widget_wpm_meter *widget;
@@ -138,7 +155,7 @@ static void layer_update_cb(struct layer_state state) {
         }
 #endif
 
-        lv_label_set_text(widget->layer_label, display_name);
+        layer_label_set_text(widget->layer_label, display_name);
     }
 }
 
@@ -196,7 +213,7 @@ int zmk_widget_wpm_meter_init(struct zmk_widget_wpm_meter *widget, lv_obj_t *par
 
     widget->layer_label = lv_label_create(widget->obj);
     lv_label_set_text(widget->layer_label, "");
-    lv_obj_set_width(widget->layer_label, 64);
+    lv_obj_set_width(widget->layer_label, LV_SIZE_CONTENT);
     lv_label_set_long_mode(widget->layer_label, LV_LABEL_LONG_MODE_DOTS);
     lv_obj_set_style_text_align(widget->layer_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     lv_obj_set_style_text_font(widget->layer_label, &DINishCondensed_SemiBold_20, LV_PART_MAIN);
