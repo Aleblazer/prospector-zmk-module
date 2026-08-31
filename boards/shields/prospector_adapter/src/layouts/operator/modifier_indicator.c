@@ -88,7 +88,7 @@ static lv_obj_t *create_mod_label(lv_obj_t *parent, const char *text, bool use_s
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_font(label,
-                               use_symbols ? &Symbols_Regular_28
+                               use_symbols ? &Symbols_Bold_26
                                            : &DINishCondensed_SemiBold_20,
                                LV_PART_MAIN);
     lv_obj_set_style_text_color(label, lv_color_hex(DISPLAY_COLOR_MOD_INACTIVE), LV_PART_MAIN);
@@ -98,23 +98,22 @@ static lv_obj_t *create_mod_label(lv_obj_t *parent, const char *text, bool use_s
 
 int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 46, 68);
+    lv_obj_set_size(widget->obj, 52, 68);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
+    lv_obj_add_flag(widget->obj, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
     bool use_symbols = modifier_order_uses_symbols();
     for (int i = 0; i < 4; i++) {
         lv_obj_t *cell = lv_obj_create(widget->obj);
         widget->mod_containers[i] = cell;
-        lv_obj_set_size(cell, 22, 32);
-        lv_obj_set_pos(cell, (i % 2) * 24, (i / 2) * 36);
-        lv_obj_set_style_bg_color(cell, lv_color_hex(0x101826), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_color(cell, lv_color_hex(0x263551), LV_PART_MAIN);
-        lv_obj_set_style_border_width(cell, 1, LV_PART_MAIN);
-        lv_obj_set_style_radius(cell, 2, LV_PART_MAIN);
+        lv_obj_set_size(cell, 26, 34);
+        lv_obj_set_pos(cell, (i % 2) * 26, (i / 2) * 34);
+        lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_width(cell, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(cell, 0, LV_PART_MAIN);
+        lv_obj_add_flag(cell, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
         const char *text = use_symbols ? modifier_order_get_symbol(i)
                                        : modifier_order_get_text(i);
