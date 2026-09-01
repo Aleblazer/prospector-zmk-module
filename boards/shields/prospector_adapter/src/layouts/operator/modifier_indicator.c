@@ -15,8 +15,6 @@
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
-/* LVGL uses 256 as 100% transform scale. */
-#define MOD_SYMBOL_SCALE 192
 #define MOD_GRID_WIDTH 42
 #define MOD_CELL_WIDTH 34
 #define MOD_CELL_HEIGHT 34
@@ -98,14 +96,10 @@ static lv_obj_t *create_mod_label(lv_obj_t *parent, const char *text, bool use_s
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_font(label,
-                               use_symbols ? &Symbols_Bold_26
+                               use_symbols ? &Symbols_Bold_20
                                            : &DINishCondensed_SemiBold_20,
                                LV_PART_MAIN);
     lv_obj_set_style_text_color(label, lv_color_hex(DISPLAY_COLOR_MOD_INACTIVE), LV_PART_MAIN);
-    if (use_symbols) {
-        lv_obj_set_style_transform_scale_x(label, MOD_SYMBOL_SCALE, LV_PART_MAIN);
-        lv_obj_set_style_transform_scale_y(label, MOD_SYMBOL_SCALE, LV_PART_MAIN);
-    }
     lv_obj_center(label);
     return label;
 }
