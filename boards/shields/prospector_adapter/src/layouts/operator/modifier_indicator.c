@@ -127,6 +127,9 @@ int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *wid
         const char *text = use_symbols ? modifier_order_get_symbol(i)
                                        : modifier_order_get_text(i);
         widget->mod_labels[i] = create_mod_label(cell, text, use_symbols);
+        if (use_symbols && modifier_order_get(i) == MOD_TYPE_CTRL) {
+            lv_obj_align(widget->mod_labels[i], LV_ALIGN_CENTER, 0, 6);
+        }
     }
 
     sys_slist_append(&widgets, &widget->node);
