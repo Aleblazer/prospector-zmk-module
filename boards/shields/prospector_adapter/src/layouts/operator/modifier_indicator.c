@@ -18,10 +18,10 @@ static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 #define MOD_GRID_WIDTH 42
 #define MOD_CELL_WIDTH 34
 #define MOD_CELL_HEIGHT 34
-#define MOD_COLUMN_STEP 14
-#define MOD_ROW_STEP 38
-#define MOD_LEFT_OFFSET -4
-#define MOD_TOP_OFFSET -2
+#define MOD_COLUMN_STEP 22
+#define MOD_ROW_STEP 30
+#define MOD_LEFT_OFFSET -8
+#define MOD_TOP_OFFSET 2
 
 struct modifier_indicator_state {
     bool mods[4];
