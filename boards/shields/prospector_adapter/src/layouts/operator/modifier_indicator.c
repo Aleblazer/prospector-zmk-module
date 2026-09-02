@@ -21,7 +21,7 @@ static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 #define MOD_COLUMN_STEP 22
 #define MOD_ROW_STEP 30
 #define MOD_LEFT_OFFSET -8
-#define MOD_TOP_OFFSET 2
+#define MOD_TOP_OFFSET 6
 
 struct modifier_indicator_state {
     bool mods[4];
