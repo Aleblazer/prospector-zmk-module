@@ -186,7 +186,7 @@ int zmk_widget_wpm_meter_init(struct zmk_widget_wpm_meter *widget, lv_obj_t *par
 
     widget->wpm_label = lv_label_create(widget->obj);
     lv_label_set_text(widget->wpm_label, "0");
-    lv_obj_set_style_text_font(widget->wpm_label, &FR_Medium_32, LV_PART_MAIN);
+    lv_obj_set_style_text_font(widget->wpm_label, &FR_Medium_22, LV_PART_MAIN);
     lv_obj_set_style_text_color(widget->wpm_label, lv_color_hex(DISPLAY_COLOR_WPM_TEXT), LV_PART_MAIN);
     lv_obj_set_style_bg_color(widget->wpm_label, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(widget->wpm_label, LV_OPA_COVER, LV_PART_MAIN);
