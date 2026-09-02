@@ -418,7 +418,7 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
         lv_obj_align(title_label, LV_ALIGN_CENTER, 0, 1);
 
     } else if (PERIPHERAL_COUNT == 2) {
-        const int bar_width = 28;
+        const int bar_width = 25;
         const int bar_height = 64;
         const int bar_gap = 8;
         const int start_x = (70 - (2 * bar_width + bar_gap)) / 2;
