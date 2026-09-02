@@ -36,6 +36,8 @@ static lv_style_t style_label_box_connected;
 static lv_style_t style_label_box_low;
 static lv_style_t style_label_disconnected;
 static lv_style_t style_label_connected;
+static lv_style_t style_pill_label_disconnected;
+static lv_style_t style_pill_label_connected;
 static lv_style_t style_battery_label_disconnected;
 static lv_style_t style_battery_label_connected;
 static bool styles_initialized = false;
@@ -83,6 +85,14 @@ static void init_styles(void) {
 
     lv_style_init(&style_label_connected);
     lv_style_set_text_color(&style_label_connected, lv_color_hex(0x000000));
+
+    lv_style_init(&style_pill_label_disconnected);
+    lv_style_set_text_color(&style_pill_label_disconnected,
+                            lv_color_hex(DISPLAY_COLOR_BATTERY_DISCONNECTED_FILL));
+
+    lv_style_init(&style_pill_label_connected);
+    lv_style_set_text_color(&style_pill_label_connected,
+                            lv_color_hex(DISPLAY_COLOR_BATTERY_LABEL));
 
     lv_style_init(&style_battery_label_disconnected);
     lv_style_set_text_color(&style_battery_label_disconnected, lv_color_hex(DISPLAY_COLOR_BATTERY_DISCONNECTED_FILL));
@@ -239,7 +249,15 @@ static void update_peripheral_display(uint8_t source) {
     if (label) {
         lv_obj_remove_style(label, &style_label_disconnected, LV_PART_MAIN);
         lv_obj_remove_style(label, &style_label_connected, LV_PART_MAIN);
-        lv_obj_add_style(label, label_style, LV_PART_MAIN);
+        lv_obj_remove_style(label, &style_pill_label_disconnected, LV_PART_MAIN);
+        lv_obj_remove_style(label, &style_pill_label_connected, LV_PART_MAIN);
+        if (PERIPHERAL_COUNT == 2 && bar) {
+            lv_obj_add_style(label, connected ? &style_pill_label_connected
+                                              : &style_pill_label_disconnected,
+                             LV_PART_MAIN);
+        } else {
+            lv_obj_add_style(label, label_style, LV_PART_MAIN);
+        }
 
         if (PERIPHERAL_COUNT <= 2) {
             char text[5];
@@ -400,42 +418,39 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
         lv_obj_align(title_label, LV_ALIGN_CENTER, 0, 1);
 
     } else if (PERIPHERAL_COUNT == 2) {
-        int arc_size = 34;
-        int y_center = (68 - arc_size) / 2;
-        int spacing = 36;
+        const int bar_width = 28;
+        const int bar_height = 64;
+        const int bar_gap = 8;
+        const int start_x = (70 - (2 * bar_width + bar_gap)) / 2;
+        const int bar_y = (68 - bar_height) / 2;
 
         for (int i = 0; i < 2; i++) {
-            lv_obj_t *arc = lv_arc_create(widget->obj);
-            peripheral_arcs[i] = arc;
-            lv_obj_set_size(arc, arc_size, arc_size);
-            lv_obj_set_pos(arc, i * spacing, y_center);
-            lv_arc_set_range(arc, 0, 100);
-            lv_arc_set_value(arc, 0);
-            lv_arc_set_bg_angles(arc, 270, 180);
-            lv_arc_set_rotation(arc, 0);
-            lv_obj_set_style_arc_width(arc, ARC_WIDTH_DISCONNECTED, LV_PART_MAIN);
-            lv_obj_set_style_arc_width(arc, ARC_WIDTH_DISCONNECTED, LV_PART_INDICATOR);
-            lv_obj_add_style(arc, &style_arc_ring_disconnected, LV_PART_MAIN);
-            lv_obj_add_style(arc, &style_arc_ind_disconnected, LV_PART_INDICATOR);
-            lv_obj_remove_style(arc, NULL, LV_PART_KNOB);
-            lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_t *bar = lv_bar_create(widget->obj);
+            peripheral_bars[i] = bar;
+            lv_obj_set_size(bar, bar_width, bar_height);
+            lv_obj_set_pos(bar, start_x + i * (bar_width + bar_gap), bar_y);
+            lv_bar_set_range(bar, 0, 100);
+            lv_bar_set_value(bar, 0, LV_ANIM_OFF);
+            lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+            lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+            lv_obj_set_style_bg_color(bar,
+                                      lv_color_hex(DISPLAY_COLOR_BATTERY_DISCONNECTED_RING),
+                                      LV_PART_MAIN);
+            lv_obj_set_style_bg_color(bar,
+                                      lv_color_hex(DISPLAY_COLOR_BATTERY_DISCONNECTED_FILL),
+                                      LV_PART_INDICATOR);
+            lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
+            lv_obj_set_style_border_width(bar, 0, LV_PART_MAIN);
+            lv_obj_set_style_pad_all(bar, 0, LV_PART_MAIN);
+            lv_obj_clear_flag(bar, LV_OBJ_FLAG_CLICKABLE);
 
-            lv_obj_t *label_box = lv_obj_create(arc);
-            peripheral_label_boxes[i] = label_box;
-            lv_obj_set_size(label_box, 24, 22);
-            lv_obj_set_style_bg_opa(label_box, LV_OPA_COVER, LV_PART_MAIN);
-            lv_obj_set_style_radius(label_box, 2, LV_PART_MAIN);
-            lv_obj_set_style_border_width(label_box, 0, LV_PART_MAIN);
-            lv_obj_set_style_pad_all(label_box, 0, LV_PART_MAIN);
-            lv_obj_add_style(label_box, &style_label_box_disconnected, LV_PART_MAIN);
-            lv_obj_center(label_box);
-
-            lv_obj_t *label = lv_label_create(label_box);
+            lv_obj_t *label = lv_label_create(bar);
             peripheral_labels[i] = label;
             lv_label_set_text(label, "-");
             lv_obj_set_style_text_font(label, &DINishCondensed_SemiBold_20, LV_PART_MAIN);
             lv_obj_set_style_text_letter_space(label, -1, LV_PART_MAIN);
-            lv_obj_add_style(label, &style_label_disconnected, LV_PART_MAIN);
+            lv_obj_add_style(label, &style_pill_label_disconnected, LV_PART_MAIN);
             lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
         }
 
