@@ -41,6 +41,7 @@ LV_FONT_DECLARE(Symbols_Regular_28);
 LV_FONT_DECLARE(FG_Medium_20);
 LV_FONT_DECLARE(FG_Medium_21);
 LV_FONT_DECLARE(FG_Medium_26);
+LV_FONT_DECLARE(DINishExpanded_Light_25);
 LV_FONT_DECLARE(DINishExpanded_Light_36);
 LV_FONT_DECLARE(DINishCondensed_SemiBold_20);
 LV_FONT_DECLARE(FR_Medium_32);
