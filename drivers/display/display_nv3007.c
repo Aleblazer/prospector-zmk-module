@@ -177,7 +177,12 @@ static const uint8_t nv3007_init_seq[] = {
 	 * "F9" command deliberately commented out, so 17 lands as a second F1
 	 * parameter. Reproduce that exactly. (LVGL / Arduino_GFX send F9 17.)
 	 */
+#ifdef CONFIG_NV3007_INIT_F9
+	0xF1, 1, 0x0E,
+	0xF9, 1, 0x17,
+#else
 	0xF1, 2, 0x0E, 0x17,
+#endif
 	0xF2, 4, 0x2C, 0x1B, 0x0B, 0x20,
 	/* 1 dot */
 	0xE9, 1, 0x29,
@@ -300,7 +305,8 @@ static int nv3007_write(const struct device *dev, const uint16_t x, const uint16
 	__ASSERT((desc->pitch * NV3007_PIXEL_SIZE * desc->height) <= desc->buf_size,
 		 "Input buffer too small");
 
-	LOG_DBG("Writing %dx%d (w,h) @ %dx%d (x,y)", desc->width, desc->height, x, y);
+	LOG_DBG("Writing %dx%d (w,h) @ %dx%d (x,y) pitch %d", desc->width, desc->height, x, y,
+		desc->pitch);
 
 	ret = nv3007_set_mem_area(dev, x, y, desc->width, desc->height);
 	if (ret < 0) {
@@ -435,7 +441,7 @@ static int nv3007_apply_orientation(const struct device *dev,
 	data->madctl = madctl;
 	data->orientation = orientation;
 
-	LOG_DBG("Orientation %d: MADCTL 0x%02x, offsets col %u row %u", orientation, madctl,
+	LOG_INF("Orientation %d: MADCTL 0x%02x, offsets col %u row %u", orientation, madctl,
 		data->caset_offset, data->raset_offset);
 
 	return 0;
