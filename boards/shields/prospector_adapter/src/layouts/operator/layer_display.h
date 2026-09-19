@@ -5,6 +5,7 @@
 #include <zmk/keymap.h>
 
 #define LAYER_DOT_COUNT ZMK_KEYMAP_LAYERS_LEN
+#define LAYER_DISPLAY_WIDTH 230
 
 struct zmk_widget_layer_display {
     sys_snode_t node;

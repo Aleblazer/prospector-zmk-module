@@ -16,12 +16,9 @@ choice ZMK_DISPLAY_WORK_QUEUE
     default ZMK_DISPLAY_WORK_QUEUE_DEDICATED
 endchoice
 
-choice ST7789V_PIXEL_FORMAT
-	default ST7789V_RGB565
-endchoice
-
+# 428x142 RGB565 is ~121 KiB per frame; 20% double-buffered is ~49 KiB.
 config LV_Z_VDB_SIZE
-    default 50
+    default 20
 
 config LV_Z_DOUBLE_VDB
     default y
@@ -32,8 +29,9 @@ config LV_Z_FLUSH_THREAD
 config LV_Z_MEM_POOL_SIZE
     default 16384
 
+# 142x428 on a 2.79" diagonal
 config LV_DPI_DEF
-    default 261
+    default 162
 
 config LV_Z_BITS_PER_PIXEL
 	default 16

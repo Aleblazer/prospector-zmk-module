@@ -3,11 +3,12 @@
 #include <lvgl.h>
 #include <zephyr/kernel.h>
 
-#define WPM_BAR_COUNT 26
+/* 428x142 NV3007 canvas: the meter fills the right-hand column. */
+#define WPM_BAR_COUNT 38
 #define WPM_MAX 120
 
-#define WPM_METER_WIDTH 158
-#define WPM_METER_HEIGHT 68
+#define WPM_METER_WIDTH 230
+#define WPM_METER_HEIGHT 110
 #define WPM_BAR_WIDTH 5
 #define WPM_BAR_GAP 1
 

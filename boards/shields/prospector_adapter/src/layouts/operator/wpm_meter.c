@@ -186,26 +186,26 @@ int zmk_widget_wpm_meter_init(struct zmk_widget_wpm_meter *widget, lv_obj_t *par
 
     widget->wpm_label = lv_label_create(widget->obj);
     lv_label_set_text(widget->wpm_label, "0");
-    lv_obj_set_style_text_font(widget->wpm_label, &FR_Medium_22, LV_PART_MAIN);
+    lv_obj_set_style_text_font(widget->wpm_label, &FR_Medium_32, LV_PART_MAIN);
     lv_obj_set_style_text_color(widget->wpm_label, lv_color_hex(DISPLAY_COLOR_WPM_TEXT), LV_PART_MAIN);
     lv_obj_set_style_bg_color(widget->wpm_label, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(widget->wpm_label, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_pad_hor(widget->wpm_label, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_ver(widget->wpm_label, 2, LV_PART_MAIN);
-    lv_obj_align(widget->wpm_label, LV_ALIGN_TOP_LEFT, -3, -5);
+    lv_obj_align(widget->wpm_label, LV_ALIGN_TOP_LEFT, -3, -7);
 
     widget->layer_label = lv_label_create(widget->obj);
     lv_label_set_text(widget->layer_label, "");
     lv_obj_set_width(widget->layer_label, LV_SIZE_CONTENT);
     lv_label_set_long_mode(widget->layer_label, LV_LABEL_LONG_MODE_DOTS);
     lv_obj_set_style_text_align(widget->layer_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(widget->layer_label, &DINishExpanded_Light_25, LV_PART_MAIN);
+    lv_obj_set_style_text_font(widget->layer_label, &DINishExpanded_Light_36, LV_PART_MAIN);
     lv_obj_set_style_text_color(widget->layer_label, lv_color_hex(DISPLAY_COLOR_LAYER_TEXT), LV_PART_MAIN);
     lv_obj_set_style_bg_color(widget->layer_label, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(widget->layer_label, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_pad_hor(widget->layer_label, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_ver(widget->layer_label, 2, LV_PART_MAIN);
-    lv_obj_align(widget->layer_label, LV_ALIGN_BOTTOM_RIGHT, 3, 4);
+    lv_obj_align(widget->layer_label, LV_ALIGN_BOTTOM_RIGHT, 3, 6);
 
     sys_slist_append(&widgets, &widget->node);
     widget_wpm_meter_init();

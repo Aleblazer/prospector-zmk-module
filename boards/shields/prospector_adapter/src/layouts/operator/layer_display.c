@@ -37,12 +37,12 @@ ZMK_SUBSCRIPTION(widget_layer_display, zmk_layer_state_changed);
 
 int zmk_widget_layer_display_init(struct zmk_widget_layer_display *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 260, 6);
+    lv_obj_set_size(widget->obj, LAYER_DISPLAY_WIDTH, 6);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
 
-    int dot_width = (260 - (LAYER_DOT_COUNT - 1) * 3) / LAYER_DOT_COUNT;
+    int dot_width = (LAYER_DISPLAY_WIDTH - (LAYER_DOT_COUNT - 1) * 3) / LAYER_DOT_COUNT;
     int dot_gap = 3;
 
     for (int i = 0; i < LAYER_DOT_COUNT; i++) {
