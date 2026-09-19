@@ -590,6 +590,16 @@ static int nv3007_init(const struct device *dev)
 		return ret;
 	}
 
+	/* Re-assert the pixel format after Sleep Out; harmless if it already took */
+	{
+		uint8_t colmod = NV3007_COLMOD_16BPP;
+
+		ret = nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
 #ifdef CONFIG_NV3007_INIT_TEST_PATTERN
 	ret = nv3007_paint_test_pattern(dev);
 	if (ret < 0) {
@@ -639,11 +649,17 @@ static DEVICE_API(display, nv3007_api) = {
 		 ? SPI_WORD_SET(8)                                                               \
 		 : SPI_WORD_SET(9))
 
+#ifdef CONFIG_NV3007_SPI_MODE3
+#define NV3007_SPI_MODE_FLAGS (SPI_MODE_CPOL | SPI_MODE_CPHA)
+#else
+#define NV3007_SPI_MODE_FLAGS 0
+#endif
+
 #define NV3007_INIT(inst)                                                                        \
 	static const struct nv3007_config nv3007_config_##inst = {                               \
 		.mipi_dbi = DEVICE_DT_GET(DT_INST_PARENT(inst)),                                 \
 		.dbi_config = MIPI_DBI_CONFIG_DT_INST(                                           \
-			inst, NV3007_WORD_SIZE(inst) | SPI_OP_MODE_MASTER, 0),                   \
+			inst, NV3007_WORD_SIZE(inst) | SPI_OP_MODE_MASTER |                       			NV3007_SPI_MODE_FLAGS, 0),                                               \
 		.width = DT_INST_PROP(inst, width),                                              \
 		.height = DT_INST_PROP(inst, height),                                            \
 		.gram_width = DT_INST_PROP(inst, gram_width),                                    \
