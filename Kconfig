@@ -1,3 +1,5 @@
+rsource "drivers/Kconfig"
+
 choice PROSPECTOR_STATUS_SCREEN_LAYOUT
     prompt "Status screen layout"
     default PROSPECTOR_STATUS_SCREEN_CLASSIC

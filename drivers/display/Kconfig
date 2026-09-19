@@ -1,0 +1,31 @@
+# NV3007 display driver configuration options
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig NV3007
+	bool "NV3007 TFT LCD display driver"
+	default y
+	depends on DT_HAS_NEWVISION_NV3007_ENABLED
+	select MIPI_DBI
+	help
+	  Enable the driver for the NewVision NV3007 168x428 RGB TFT LCD
+	  controller (4-wire SPI via the MIPI DBI API). Used by the 2.79"
+	  142x428 IPS bar panels (e.g. EastRising ER-TFT2.79-1).
+
+if NV3007
+
+config NV3007_RESET_HOLD_MS
+	int "Hardware reset pulse width (ms)"
+	default 10
+	help
+	  How long the reset line is asserted when a reset GPIO is available on
+	  the MIPI DBI bus.
+
+config NV3007_RESET_RECOVERY_MS
+	int "Delay after reset before sending commands (ms)"
+	default 120
+
+config NV3007_SLEEP_OUT_DELAY_MS
+	int "Delay after Sleep Out before Display On (ms)"
+	default 120
+
+endif # NV3007

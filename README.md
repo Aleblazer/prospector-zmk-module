@@ -8,9 +8,9 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 > This branch is a work-in-progress and is only compatible with the Zephyr 4.1 version of ZMK (current main).
 >
 > The `feat/nv3007-wide-port` branch targets the 2.79-inch **NV3007** panel
-> (142×428, used as a 428×142 landscape display). It needs the
-> [zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display) module
-> for the display driver. Operator is the adapted layout; Field is still
+> (142×428, used as a 428×142 landscape display). The NV3007 display driver
+> is vendored under `drivers/display` (canonical copy:
+> [zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display)). Operator is the adapted layout; Field is still
 > pending. Classic and Radii retain their original geometry and are not usable
 > on this display yet.
 
@@ -61,9 +61,6 @@ manifest:
     - name: prospector-zmk-module                 # <--- and these
       remote: aleblazer                           # <---
       revision: feat/nv3007-wide-port             # <---
-    - name: zmk-nv3007-display                    # <--- display driver
-      remote: aleblazer                           # <---
-      revision: main                              # <---
   self:
     path: config
 ```
