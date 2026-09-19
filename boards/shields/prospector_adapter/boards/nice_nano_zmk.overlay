@@ -65,6 +65,10 @@ disp_spi: &pro_micro_spi {
             height = <428>;
             x-offset = <12>;
             y-offset = <0>;
+            /* Same landscape orientation display_rotate_init.c selects, so the
+             * driver's own init (and its optional test pattern) already use it.
+             */
+            rotation = <270>;
         };
     };
 };

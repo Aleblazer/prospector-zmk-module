@@ -28,4 +28,19 @@ config NV3007_SLEEP_OUT_DELAY_MS
 	int "Delay after Sleep Out before Display On (ms)"
 	default 120
 
+config NV3007_INIT_TEST_PATTERN
+	bool "Paint a test pattern from the driver after init (debug)"
+	help
+	  After the init sequence the driver turns the panel on and fills it
+	  with red / green / blue bars along the long axis, a white 1-pixel
+	  border, and a black square in the red bar, then holds the image for
+	  NV3007_INIT_TEST_PATTERN_HOLD_MS before returning. Use it to prove
+	  the SPI link, window offsets, orientation and colour order without
+	  LVGL in the loop. Boot is delayed by the hold time.
+
+config NV3007_INIT_TEST_PATTERN_HOLD_MS
+	int "Test pattern hold time (ms)"
+	default 3000
+	depends on NV3007_INIT_TEST_PATTERN
+
 endif # NV3007

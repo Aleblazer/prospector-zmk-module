@@ -467,6 +467,73 @@ static enum display_orientation nv3007_rotation_to_orientation(uint16_t rotation
 	}
 }
 
+#ifdef CONFIG_NV3007_INIT_TEST_PATTERN
+/*
+ * Debug aid: paint the whole panel straight from the driver. Along the long
+ * axis: red, green, blue thirds; a white 1-pixel border on every edge (proves
+ * the window offsets); a black square inside the red bar (proves inversion).
+ * Pixels are RGB565, high byte first on the wire.
+ */
+static int nv3007_paint_test_pattern(const struct device *dev)
+{
+	struct display_capabilities caps;
+	struct display_buffer_descriptor desc;
+	uint8_t line[2 * 428];
+	int ret;
+
+	nv3007_get_capabilities(dev, &caps);
+	if (caps.x_resolution * 2 > sizeof(line)) {
+		return -ENOMEM;
+	}
+
+	desc.buf_size = caps.x_resolution * 2;
+	desc.width = caps.x_resolution;
+	desc.pitch = caps.x_resolution;
+	desc.height = 1;
+
+	for (uint16_t y = 0; y < caps.y_resolution; y++) {
+		for (uint16_t x = 0; x < caps.x_resolution; x++) {
+			uint16_t px;
+			bool long_is_x = caps.x_resolution >= caps.y_resolution;
+			uint16_t along = long_is_x ? x : y;
+			uint16_t along_max = long_is_x ? caps.x_resolution : caps.y_resolution;
+			uint16_t across = long_is_x ? y : x;
+			uint16_t across_max = long_is_x ? caps.y_resolution : caps.x_resolution;
+
+			if (x == 0 || y == 0 || x == caps.x_resolution - 1 ||
+			    y == caps.y_resolution - 1) {
+				px = 0xFFFF; /* white border */
+			} else if (along < along_max / 3) {
+				/* red bar with a black square in its middle */
+				bool sq = along > along_max / 6 - 15 && along < along_max / 6 + 15 &&
+					  across > across_max / 2 - 15 && across < across_max / 2 + 15;
+				px = sq ? 0x0000 : 0xF800;
+			} else if (along < 2 * along_max / 3) {
+				px = 0x07E0; /* green */
+			} else {
+				px = 0x001F; /* blue */
+			}
+			line[2 * x] = px >> 8;
+			line[2 * x + 1] = px & 0xFF;
+		}
+		ret = nv3007_write(dev, 0, y, &desc, line);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	ret = nv3007_blanking_off(dev);
+	if (ret < 0) {
+		return ret;
+	}
+
+	LOG_INF("Test pattern painted (%ux%u), holding %d ms", caps.x_resolution,
+		caps.y_resolution, CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS);
+	k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
+	return 0;
+}
+#endif /* CONFIG_NV3007_INIT_TEST_PATTERN */
+
 static int nv3007_init(const struct device *dev)
 {
 	const struct nv3007_config *config = dev->config;
@@ -517,12 +584,20 @@ static int nv3007_init(const struct device *dev)
 		return ret;
 	}
 
+#ifdef CONFIG_NV3007_INIT_TEST_PATTERN
+	ret = nv3007_paint_test_pattern(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to paint test pattern (%d)", ret);
+		return ret;
+	}
+#else
 	/* Leave the panel blanked; the application turns it on with display_blanking_off() */
 	ret = nv3007_blanking_on(dev);
 	if (ret < 0) {
 		LOG_ERR("Failed to blank display (%d)", ret);
 		return ret;
 	}
+#endif
 
 	LOG_INF("NV3007 ready: %ux%u panel in %ux%u GRAM, rotation %u", config->width,
 		config->height, config->gram_width, config->gram_height, config->rotation);
