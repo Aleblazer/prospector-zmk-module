@@ -30,6 +30,8 @@
 LOG_MODULE_REGISTER(display_nv3007, CONFIG_DISPLAY_LOG_LEVEL);
 
 #define NV3007_PIXEL_SIZE 2U /* RGB565 only */
+/* Largest frame memory row the driver can transpose in software (NV3007: 168 columns) */
+#define NV3007_MAX_GRAM_WIDTH 168U
 
 struct nv3007_config {
 	const struct device *mipi_dbi;
@@ -52,6 +54,9 @@ struct nv3007_data {
 	/* Offsets added to the CASET / RASET window for the current MADCTL */
 	uint16_t caset_offset;
 	uint16_t raset_offset;
+	/* Landscape orientation implemented by transposing in software */
+	bool transposed;
+	uint8_t line[NV3007_MAX_GRAM_WIDTH * NV3007_PIXEL_SIZE];
 };
 
 /*
@@ -291,10 +296,67 @@ static int nv3007_set_mem_area(const struct device *dev, const uint16_t x, const
 	return nv3007_transmit(dev, NV3007_CMD_RASET, (uint8_t *)spi_data, sizeof(spi_data));
 }
 
+/*
+ * Landscape write without the MV bit: the block (x, y, w, h) in landscape
+ * coordinates occupies frame memory columns y..y+h-1 and rows x..x+w-1. The
+ * controller fills a window column-first, so send w rows of h pixels, each
+ * gathered from one column of the source buffer. MX / MY in MADCTL supply
+ * the mirroring that turns a plain transpose into a rotation.
+ */
+static int nv3007_write_transposed(const struct device *dev, const uint16_t x,
+				   const uint16_t y, const struct display_buffer_descriptor *desc,
+				   const uint8_t *buf)
+{
+	const struct nv3007_config *config = dev->config;
+	struct nv3007_data *data = dev->data;
+	struct display_buffer_descriptor mipi_desc;
+	int ret;
+
+	if (desc->height > NV3007_MAX_GRAM_WIDTH) {
+		return -EINVAL;
+	}
+
+	ret = nv3007_set_mem_area(dev, y, x, desc->height, desc->width);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = nv3007_transmit(dev, NV3007_CMD_RAMWR, NULL, 0);
+	if (ret < 0) {
+		return ret;
+	}
+
+	mipi_desc.width = desc->height;
+	mipi_desc.pitch = desc->height;
+	mipi_desc.height = 1;
+	mipi_desc.buf_size = desc->height * NV3007_PIXEL_SIZE;
+
+	for (uint16_t i = 0; i < desc->width; i++) {
+		const uint8_t *src = buf + i * NV3007_PIXEL_SIZE;
+		uint8_t *dst = data->line;
+
+		for (uint16_t j = 0; j < desc->height; j++) {
+			dst[0] = src[0];
+			dst[1] = src[1];
+			dst += NV3007_PIXEL_SIZE;
+			src += desc->pitch * NV3007_PIXEL_SIZE;
+		}
+
+		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config, data->line,
+					     &mipi_desc, PIXEL_FORMAT_RGB_565);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 static int nv3007_write(const struct device *dev, const uint16_t x, const uint16_t y,
 			const struct display_buffer_descriptor *desc, const void *buf)
 {
 	const struct nv3007_config *config = dev->config;
+	struct nv3007_data *data = dev->data;
 	struct display_buffer_descriptor mipi_desc;
 	const uint8_t *write_data_start = (const uint8_t *)buf;
 	uint16_t nbr_of_writes;
@@ -307,6 +369,10 @@ static int nv3007_write(const struct device *dev, const uint16_t x, const uint16
 
 	LOG_DBG("Writing %dx%d (w,h) @ %dx%d (x,y) pitch %d", desc->width, desc->height, x, y,
 		desc->pitch);
+
+	if (data->transposed) {
+		return nv3007_write_transposed(dev, x, y, desc, write_data_start);
+	}
 
 	ret = nv3007_set_mem_area(dev, x, y, desc->width, desc->height);
 	if (ret < 0) {
@@ -390,7 +456,9 @@ static int nv3007_set_pixel_format(const struct device *dev,
  * counter (CASET) walks the panel's row axis and vice versa.
  *
  * MADCTL values match the vendor demo: 00h portrait, C0h upside-down
- * portrait, 60h / A0h for the two landscape orientations.
+ * portrait, 60h / A0h for the two landscape orientations when
+ * CONFIG_NV3007_HW_ROTATION is set. By default landscape keeps the vendor's
+ * portrait addressing (MADCTL 40h / 80h) and the driver transposes.
  */
 static int nv3007_apply_orientation(const struct device *dev,
 				    const enum display_orientation orientation)
@@ -402,17 +470,30 @@ static int nv3007_apply_orientation(const struct device *dev,
 	uint16_t row_margin;
 	int ret;
 
+	bool hw_mv = IS_ENABLED(CONFIG_NV3007_HW_ROTATION);
+	bool transposed = false;
+
 	switch (orientation) {
 	case DISPLAY_ORIENTATION_NORMAL:
 		break;
 	case DISPLAY_ORIENTATION_ROTATED_90:
-		madctl |= NV3007_MADCTL_MY | NV3007_MADCTL_MV;
+		madctl |= NV3007_MADCTL_MY;
+		if (hw_mv) {
+			madctl |= NV3007_MADCTL_MV;
+		} else {
+			transposed = true;
+		}
 		break;
 	case DISPLAY_ORIENTATION_ROTATED_180:
 		madctl |= NV3007_MADCTL_MY | NV3007_MADCTL_MX;
 		break;
 	case DISPLAY_ORIENTATION_ROTATED_270:
-		madctl |= NV3007_MADCTL_MX | NV3007_MADCTL_MV;
+		madctl |= NV3007_MADCTL_MX;
+		if (hw_mv) {
+			madctl |= NV3007_MADCTL_MV;
+		} else {
+			transposed = true;
+		}
 		break;
 	default:
 		return -ENOTSUP;
@@ -440,9 +521,10 @@ static int nv3007_apply_orientation(const struct device *dev,
 
 	data->madctl = madctl;
 	data->orientation = orientation;
+	data->transposed = transposed;
 
-	LOG_INF("Orientation %d: MADCTL 0x%02x, offsets col %u row %u", orientation, madctl,
-		data->caset_offset, data->raset_offset);
+	LOG_INF("Orientation %d: MADCTL 0x%02x, offsets col %u row %u%s", orientation, madctl,
+		data->caset_offset, data->raset_offset, transposed ? ", transposed" : "");
 
 	return 0;
 }
