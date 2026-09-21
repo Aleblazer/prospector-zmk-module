@@ -830,6 +830,65 @@ static int nv3007_paint_test_pattern(const struct device *dev)
 }
 #endif /* CONFIG_NV3007_INIT_TEST_PATTERN */
 
+#ifdef CONFIG_NV3007_CLEAR_ON_INIT
+/*
+ * Blank the entire frame memory, not just the visible window.
+ *
+ * The glass covers 142 of the controller's 168 columns, so 26 columns sit
+ * outside anything the application draws. They come up holding noise and the
+ * panel shows it as a coloured fringe along one long edge. Black is all
+ * zeroes in both 16 and 18 bit formats, so one zeroed buffer serves either.
+ */
+static uint8_t nv3007_clear_buf[NV3007_MAX_GRAM_WIDTH * 3U];
+
+static int nv3007_clear_gram(const struct device *dev)
+{
+	const struct nv3007_config *config = dev->config;
+	struct display_buffer_descriptor desc;
+	uint16_t d[2];
+	int ret;
+
+	if (config->gram_width > NV3007_MAX_GRAM_WIDTH) {
+		return -EINVAL;
+	}
+
+	d[0] = sys_cpu_to_be16(0);
+	d[1] = sys_cpu_to_be16(config->gram_width - 1U);
+	ret = nv3007_transmit(dev, NV3007_CMD_CASET, (uint8_t *)d, sizeof(d));
+	if (ret < 0) {
+		return ret;
+	}
+
+	d[0] = sys_cpu_to_be16(0);
+	d[1] = sys_cpu_to_be16(config->gram_height - 1U);
+	ret = nv3007_transmit(dev, NV3007_CMD_RASET, (uint8_t *)d, sizeof(d));
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = nv3007_transmit(dev, NV3007_CMD_RAMWR, NULL, 0);
+	if (ret < 0) {
+		return ret;
+	}
+
+	desc.width = config->gram_width;
+	desc.pitch = config->gram_width;
+	desc.height = 1;
+	desc.buf_size = config->gram_width * NV3007_BYTES_PER_PIXEL;
+
+	for (uint16_t r = 0; r < config->gram_height; r++) {
+		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
+					     nv3007_clear_buf, &desc, PIXEL_FORMAT_RGB_565);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	LOG_INF("Cleared %ux%u frame memory", config->gram_width, config->gram_height);
+	return 0;
+}
+#endif /* CONFIG_NV3007_CLEAR_ON_INIT */
+
 static int nv3007_init(const struct device *dev)
 {
 	const struct nv3007_config *config = dev->config;
@@ -902,6 +961,14 @@ static int nv3007_init(const struct device *dev)
 	if (ret < 0) {
 		return ret;
 	}
+
+#ifdef CONFIG_NV3007_CLEAR_ON_INIT
+	ret = nv3007_clear_gram(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to clear frame memory (%d)", ret);
+		return ret;
+	}
+#endif
 
 #ifdef CONFIG_NV3007_INIT_TEST_PATTERN
 	ret = nv3007_paint_test_pattern(dev);

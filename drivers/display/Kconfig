@@ -28,6 +28,16 @@ config NV3007_SLEEP_OUT_DELAY_MS
 	int "Delay after Sleep Out before Display On (ms)"
 	default 220
 
+config NV3007_CLEAR_ON_INIT
+	bool "Clear the whole frame memory during init"
+	default y
+	help
+	  The glass is narrower than the controller's frame memory, so the
+	  columns outside the visible window keep whatever they powered up
+	  with and the panel displays them as a fringe of noise along one
+	  edge. The application only ever draws inside the window, so clear
+	  everything once at init. Costs one full frame of writes at startup.
+
 config NV3007_PIXEL_FORMAT_18BIT
 	bool "Drive the panel in 18 bits per pixel (RGB666)"
 	help
