@@ -16,6 +16,12 @@ static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 #define PERIPHERAL_COUNT ZMK_SPLIT_BLE_PERIPHERAL_COUNT
 #endif
 
+/* Two peripherals are drawn as horizontal bars stacked one above the other */
+#define BATTERY_WIDTH 140
+#define BATTERY_HEIGHT 58
+#define BATTERY_BAR_HEIGHT 26
+#define BATTERY_BAR_GAP 6
+
 #define LOW_BATTERY_THRESHOLD 20
 #define ARC_WIDTH_CONNECTED 4
 #define ARC_WIDTH_DISCONNECTED 2
@@ -377,7 +383,11 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
     init_styles();
 
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 70, 68);
+    if (PERIPHERAL_COUNT == 2) {
+        lv_obj_set_size(widget->obj, BATTERY_WIDTH, BATTERY_HEIGHT);
+    } else {
+        lv_obj_set_size(widget->obj, 70, 68);
+    }
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
@@ -418,17 +428,16 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
         lv_obj_align(title_label, LV_ALIGN_CENTER, 0, 1);
 
     } else if (PERIPHERAL_COUNT == 2) {
-        const int bar_width = 25;
-        const int bar_height = 64;
-        const int bar_gap = 8;
-        const int start_x = (70 - (2 * bar_width + bar_gap)) / 2;
-        const int bar_y = (68 - bar_height) / 2;
+        /* Wider than tall, so LVGL fills these left to right */
+        const int bar_width = BATTERY_WIDTH;
+        const int bar_height = BATTERY_BAR_HEIGHT;
+        const int bar_gap = BATTERY_BAR_GAP;
 
         for (int i = 0; i < 2; i++) {
             lv_obj_t *bar = lv_bar_create(widget->obj);
             peripheral_bars[i] = bar;
             lv_obj_set_size(bar, bar_width, bar_height);
-            lv_obj_set_pos(bar, start_x + i * (bar_width + bar_gap), bar_y);
+            lv_obj_set_pos(bar, 0, i * (bar_height + bar_gap));
             lv_bar_set_range(bar, 0, 100);
             lv_bar_set_value(bar, 0, LV_ANIM_OFF);
             lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);

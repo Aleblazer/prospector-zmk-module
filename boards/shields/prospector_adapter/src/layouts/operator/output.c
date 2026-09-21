@@ -10,6 +10,15 @@
 #include <fonts.h>
 #include "display_colors.h"
 
+/* Widened to the full left column now that the modifiers moved out of it */
+#define OUTPUT_WIDTH 140
+#define OUTPUT_HEIGHT 62
+#define OUTPUT_BTN_GAP 4
+#define OUTPUT_BTN_WIDTH ((OUTPUT_WIDTH - OUTPUT_BTN_GAP) / 2)
+#define OUTPUT_BTN_HEIGHT 29
+#define OUTPUT_SLOT_Y 33
+#define OUTPUT_SLOT_GAP 2
+
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 static uint8_t active_profile_index = 0;
@@ -106,7 +115,7 @@ ZMK_SUBSCRIPTION(widget_output_profile, zmk_ble_active_profile_changed);
 
 static lv_obj_t *create_toggle_btn(lv_obj_t *parent, const char *text, int x) {
     lv_obj_t *btn = lv_obj_create(parent);
-    lv_obj_set_size(btn, 56, 29);
+    lv_obj_set_size(btn, OUTPUT_BTN_WIDTH, OUTPUT_BTN_HEIGHT);
     lv_obj_set_pos(btn, x, 0);
     lv_obj_set_style_radius(btn, 6, LV_PART_MAIN);
     lv_obj_set_style_pad_all(btn, 0, LV_PART_MAIN);
@@ -122,8 +131,8 @@ static lv_obj_t *create_toggle_btn(lv_obj_t *parent, const char *text, int x) {
 
 static lv_obj_t *create_slot_btn(lv_obj_t *parent, int index, int x, int width, bool show_number) {
     lv_obj_t *slot = lv_obj_create(parent);
-    lv_obj_set_size(slot, width, 29);
-    lv_obj_set_pos(slot, x, 33);
+    lv_obj_set_size(slot, width, OUTPUT_BTN_HEIGHT);
+    lv_obj_set_pos(slot, x, OUTPUT_SLOT_Y);
     lv_obj_set_style_radius(slot, 6, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(slot, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(slot, 0, LV_PART_MAIN);
@@ -145,16 +154,17 @@ static lv_obj_t *create_slot_btn(lv_obj_t *parent, int index, int x, int width, 
 
 int zmk_widget_output_init(struct zmk_widget_output *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 116, 62);
+    lv_obj_set_size(widget->obj, OUTPUT_WIDTH, OUTPUT_HEIGHT);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
 
     widget->usb_btn = create_toggle_btn(widget->obj, "USB", 0);
-    widget->ble_btn = create_toggle_btn(widget->obj, "BLE", 58);
+    widget->ble_btn = create_toggle_btn(widget->obj, "BLE", OUTPUT_BTN_WIDTH + OUTPUT_BTN_GAP);
 
-    int slot_spacing = 2;
-    int slot_width = (116 - (ZMK_BLE_PROFILE_COUNT - 1) * slot_spacing) / ZMK_BLE_PROFILE_COUNT;
+    int slot_spacing = OUTPUT_SLOT_GAP;
+    int slot_width =
+        (OUTPUT_WIDTH - (ZMK_BLE_PROFILE_COUNT - 1) * slot_spacing) / ZMK_BLE_PROFILE_COUNT;
     bool show_numbers = (ZMK_BLE_PROFILE_COUNT <= 5);
 
     for (int i = 0; i < ZMK_BLE_PROFILE_COUNT; i++) {

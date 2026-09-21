@@ -15,13 +15,14 @@
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
-#define MOD_GRID_WIDTH 42
-#define MOD_CELL_WIDTH 34
-#define MOD_CELL_HEIGHT 34
-#define MOD_COLUMN_STEP 22
-#define MOD_ROW_STEP 30
-#define MOD_LEFT_OFFSET -8
-#define MOD_TOP_OFFSET 4
+/* One vertical column of four, in reading order from the top */
+#define MOD_COLUMN_WIDTH 28
+#define MOD_COLUMN_HEIGHT 131
+#define MOD_CELL_WIDTH 28
+#define MOD_CELL_HEIGHT 32
+#define MOD_ROW_STEP 33
+#define MOD_LEFT_OFFSET 0
+#define MOD_TOP_OFFSET 0
 
 struct modifier_indicator_state {
     bool mods[4];
@@ -106,7 +107,7 @@ static lv_obj_t *create_mod_label(lv_obj_t *parent, const char *text, bool use_s
 
 int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, MOD_GRID_WIDTH, 68);
+    lv_obj_set_size(widget->obj, MOD_COLUMN_WIDTH, MOD_COLUMN_HEIGHT);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
@@ -117,8 +118,7 @@ int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *wid
         lv_obj_t *cell = lv_obj_create(widget->obj);
         widget->mod_containers[i] = cell;
         lv_obj_set_size(cell, MOD_CELL_WIDTH, MOD_CELL_HEIGHT);
-        lv_obj_set_pos(cell, MOD_LEFT_OFFSET + (i % 2) * MOD_COLUMN_STEP,
-                       MOD_TOP_OFFSET + (i / 2) * MOD_ROW_STEP);
+        lv_obj_set_pos(cell, MOD_LEFT_OFFSET, MOD_TOP_OFFSET + i * MOD_ROW_STEP);
         lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, LV_PART_MAIN);
         lv_obj_set_style_border_width(cell, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(cell, 0, LV_PART_MAIN);

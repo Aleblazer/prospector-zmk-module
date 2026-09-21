@@ -9,14 +9,15 @@
 /*
  * Operator layout on the 2.79in NV3007 panel, 428x142 landscape canvas.
  *
- *  x:   8        86     136     190                         420
- *      +--------+      +------+ +---------------------------+
- *   6  | batt   |      |      | | WPM meter (230x110)       |
- *      | pills  |      | mods | |                           |
- *  74  +--------+      | 2x2  | |                           |
- *  76  | output |      |      | |                           |
- *      | USB/BLE|      +------+ +---------------------------+
- * 138  +--------+              +--- layer dots (230x6) ----+
+ *  x:   8                    148  156  184  190                      420
+ *      +----------------------+    +--+  +--------------------------+
+ *   6  | battery, stacked     |    |  |  | WPM meter (230x110)      |
+ *      | bars (140x58)        |    |m |  |                          |
+ *  64  +----------------------+    |o |  |                          |
+ *  72  | output, USB / BLE    |    |d |  |                          |
+ *      | and profiles (140x62)|    |s |  |                          |
+ * 134  +----------------------+    +--+  +--------------------------+
+ *                                  (28x131)  layer dots (230x6) @124
  */
 
 static struct zmk_widget_modifier_indicator modifier_indicator_widget;
@@ -34,10 +35,10 @@ lv_obj_t *zmk_display_status_screen() {
     lv_obj_set_pos(zmk_widget_battery_circles_obj(&battery_circles_widget), 8, 6);
 
     zmk_widget_output_init(&output_widget, screen);
-    lv_obj_set_pos(zmk_widget_output_obj(&output_widget), 8, 76);
+    lv_obj_set_pos(zmk_widget_output_obj(&output_widget), 8, 72);
 
     zmk_widget_modifier_indicator_init(&modifier_indicator_widget, screen);
-    lv_obj_set_pos(zmk_widget_modifier_indicator_obj(&modifier_indicator_widget), 136, 37);
+    lv_obj_set_pos(zmk_widget_modifier_indicator_obj(&modifier_indicator_widget), 156, 6);
 
     zmk_widget_wpm_meter_init(&wpm_meter_widget, screen);
     lv_obj_set_pos(zmk_widget_wpm_meter_obj(&wpm_meter_widget), 190, 6);
