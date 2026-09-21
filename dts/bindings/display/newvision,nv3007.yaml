@@ -74,8 +74,7 @@ properties:
       panel's native portrait orientation (142 wide x 428 tall). 90 and 270
       swap the reported resolution to 428 x 142 (landscape), 180 is
       upside-down portrait. The orientation can also be changed at runtime
-      with display_set_orientation(). Landscape is rendered by transposing
-      in the driver unless CONFIG_NV3007_HW_ROTATION is enabled.
+      with display_set_orientation().
 
   bgr:
     type: boolean

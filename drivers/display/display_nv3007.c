@@ -29,42 +29,14 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(display_nv3007, CONFIG_DISPLAY_LOG_LEVEL);
 
-/* The application always hands us RGB565; NV3007_BYTES_PER_PIXEL is what goes
- * out on the wire, which is three bytes in the panel's native 18 bit mode.
+#define NV3007_PIXEL_SIZE 2U /* RGB565, the only format this driver emits */
+
+/*
+ * Longest frame memory axis (NV3007: 168 columns by 428 rows). The clear
+ * buffer is sized to this rather than to the narrow axis, because when MV is
+ * set the two are exchanged and a row of the clear becomes 428 pixels wide.
  */
-#define NV3007_PIXEL_SIZE 2U /* RGB565 in */
-#ifdef CONFIG_NV3007_PIXEL_FORMAT_18BIT
-#define NV3007_BYTES_PER_PIXEL 3U
-#define NV3007_COLMOD_VAL      NV3007_COLMOD_18BPP
-#else
-#define NV3007_BYTES_PER_PIXEL 2U
-#define NV3007_COLMOD_VAL      NV3007_COLMOD_16BPP
-#endif
-
-/* Largest frame memory row the driver can transpose in software (NV3007: 168 columns) */
-#define NV3007_MAX_GRAM_WIDTH 168U
-/* Longest panel axis, for the line buffers below */
-#define NV3007_MAX_LINE_PIXELS 428U
-
-#if defined(CONFIG_NV3007_PIXEL_FORMAT_18BIT) || defined(CONFIG_NV3007_INIT_TEST_PATTERN)
-#define NV3007_NEEDS_LINE_BUF 1
-/* In .bss, never on the stack: driver init runs on the main thread during
- * POST_KERNEL, where CONFIG_MAIN_STACK_SIZE can be as little as 1 KiB.
- */
-static uint8_t nv3007_line_buf[NV3007_MAX_LINE_PIXELS * 3U];
-
-/* Expand n RGB565 pixels (big endian on the wire) into RGB666, 3 bytes each */
-__maybe_unused static void nv3007_expand_rgb666(uint8_t *dst, const uint8_t *src, size_t n)
-{
-	for (size_t i = 0; i < n; i++) {
-		uint16_t px = sys_get_be16(&src[i * 2]);
-
-		dst[i * 3 + 0] = (uint8_t)(((px >> 11) & 0x1F) << 3);
-		dst[i * 3 + 1] = (uint8_t)(((px >> 5) & 0x3F) << 2);
-		dst[i * 3 + 2] = (uint8_t)((px & 0x1F) << 3);
-	}
-}
-#endif
+#define NV3007_MAX_GRAM_DIM 428U
 
 struct nv3007_config {
 	const struct device *mipi_dbi;
@@ -89,9 +61,6 @@ struct nv3007_data {
 	/* Offsets added to the CASET / RASET window for the current MADCTL */
 	uint16_t caset_offset;
 	uint16_t raset_offset;
-	/* Landscape orientation implemented by transposing in software */
-	bool transposed;
-	uint8_t line[NV3007_MAX_GRAM_WIDTH * NV3007_PIXEL_SIZE];
 };
 
 /*
@@ -237,7 +206,7 @@ static const uint8_t nv3007_init_seq[] = {
 	0x44, 2, 0x00, 0x10,
 	0x46, 1, 0x10,
 	NV3007_CMD_PAGE_SEL, 1, 0x00,
-	NV3007_CMD_COLMOD, 1, NV3007_COLMOD_VAL,
+	NV3007_CMD_COLMOD, 1, NV3007_COLMOD_16BPP,
 };
 
 static int nv3007_transmit(const struct device *dev, uint8_t cmd, const uint8_t *tx_data,
@@ -367,122 +336,15 @@ static int nv3007_set_mem_area(const struct device *dev, const uint16_t x, const
 	return nv3007_transmit(dev, NV3007_CMD_RASET, (uint8_t *)spi_data, sizeof(spi_data));
 }
 
-BUILD_ASSERT(!IS_ENABLED(CONFIG_NV3007_PIXEL_FORMAT_18BIT) ||
-		     IS_ENABLED(CONFIG_NV3007_HW_ROTATION),
-	     "18 bit output requires NV3007_HW_ROTATION: the software transpose "
-	     "path does not expand pixels");
-
-/*
- * Landscape write without the MV bit: the block (x, y, w, h) in landscape
- * coordinates occupies frame memory columns y..y+h-1 and rows x..x+w-1. The
- * controller fills a window column-first, so send w rows of h pixels, each
- * gathered from one column of the source buffer. MX / MY in MADCTL supply
- * the mirroring that turns a plain transpose into a rotation.
- */
-static int nv3007_write_transposed(const struct device *dev, const uint16_t x,
-				   const uint16_t y, const struct display_buffer_descriptor *desc,
-				   const uint8_t *buf)
-{
-	const struct nv3007_config *config = dev->config;
-	struct nv3007_data *data = dev->data;
-	struct display_buffer_descriptor mipi_desc;
-	int ret;
-
-	if (desc->height > NV3007_MAX_GRAM_WIDTH) {
-		return -EINVAL;
-	}
-
-	ret = nv3007_set_mem_area(dev, y, x, desc->height, desc->width);
-	if (ret < 0) {
-		return ret;
-	}
-
-	ret = nv3007_transmit(dev, NV3007_CMD_RAMWR, NULL, 0);
-	if (ret < 0) {
-		return ret;
-	}
-
-	mipi_desc.width = desc->height;
-	mipi_desc.pitch = desc->height;
-	mipi_desc.height = 1;
-	mipi_desc.buf_size = desc->height * NV3007_PIXEL_SIZE;
-
-	for (uint16_t i = 0; i < desc->width; i++) {
-		const uint8_t *src = buf + i * NV3007_PIXEL_SIZE;
-		uint8_t *dst = data->line;
-
-		for (uint16_t j = 0; j < desc->height; j++) {
-			dst[0] = src[0];
-			dst[1] = src[1];
-			dst += NV3007_PIXEL_SIZE;
-			src += desc->pitch * NV3007_PIXEL_SIZE;
-		}
-
-		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config, data->line,
-					     &mipi_desc, PIXEL_FORMAT_RGB_565);
-		if (ret < 0) {
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-#ifdef CONFIG_NV3007_PIXEL_FORMAT_18BIT
-/* Expand each RGB565 line to RGB666 on the way out to the panel */
-static int nv3007_write_rgb666(const struct device *dev, const uint16_t x, const uint16_t y,
-			       const struct display_buffer_descriptor *desc, const uint8_t *buf)
-{
-	const struct nv3007_config *config = dev->config;
-	struct display_buffer_descriptor mipi_desc;
-	int ret;
-
-	if (desc->width > NV3007_MAX_LINE_PIXELS) {
-		return -EINVAL;
-	}
-
-	ret = nv3007_set_mem_area(dev, x, y, desc->width, desc->height);
-	if (ret < 0) {
-		return ret;
-	}
-
-	ret = nv3007_transmit(dev, NV3007_CMD_RAMWR, NULL, 0);
-	if (ret < 0) {
-		return ret;
-	}
-
-	mipi_desc.width = desc->width;
-	mipi_desc.pitch = desc->width;
-	mipi_desc.height = 1;
-	mipi_desc.buf_size = desc->width * NV3007_BYTES_PER_PIXEL;
-
-	for (uint16_t row = 0; row < desc->height; row++) {
-		nv3007_expand_rgb666(nv3007_line_buf,
-				     buf + row * desc->pitch * NV3007_PIXEL_SIZE, desc->width);
-
-		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
-					     nv3007_line_buf, &mipi_desc, PIXEL_FORMAT_RGB_565);
-		if (ret < 0) {
-			return ret;
-		}
-	}
-
-	return 0;
-}
-#endif /* CONFIG_NV3007_PIXEL_FORMAT_18BIT */
-
 static int nv3007_write(const struct device *dev, const uint16_t x, const uint16_t y,
 			const struct display_buffer_descriptor *desc, const void *buf)
 {
-	struct nv3007_data *data = dev->data;
-	const uint8_t *write_data_start = (const uint8_t *)buf;
-#ifndef CONFIG_NV3007_PIXEL_FORMAT_18BIT
 	const struct nv3007_config *config = dev->config;
+	const uint8_t *write_data_start = (const uint8_t *)buf;
 	struct display_buffer_descriptor mipi_desc;
 	uint16_t nbr_of_writes;
 	uint16_t write_h;
 	int ret;
-#endif
 
 	__ASSERT(desc->width <= desc->pitch, "Pitch is smaller than width");
 	__ASSERT((desc->pitch * NV3007_PIXEL_SIZE * desc->height) <= desc->buf_size,
@@ -490,14 +352,6 @@ static int nv3007_write(const struct device *dev, const uint16_t x, const uint16
 
 	LOG_DBG("Writing %dx%d (w,h) @ %dx%d (x,y) pitch %d", desc->width, desc->height, x, y,
 		desc->pitch);
-
-	if (data->transposed) {
-		return nv3007_write_transposed(dev, x, y, desc, write_data_start);
-	}
-
-#ifdef CONFIG_NV3007_PIXEL_FORMAT_18BIT
-	return nv3007_write_rgb666(dev, x, y, desc, write_data_start);
-#else
 
 	ret = nv3007_set_mem_area(dev, x, y, desc->width, desc->height);
 	if (ret < 0) {
@@ -536,7 +390,6 @@ static int nv3007_write(const struct device *dev, const uint16_t x, const uint16
 	}
 
 	return 0;
-#endif /* CONFIG_NV3007_PIXEL_FORMAT_18BIT */
 }
 
 static void nv3007_get_capabilities(const struct device *dev,
@@ -582,9 +435,7 @@ static int nv3007_set_pixel_format(const struct device *dev,
  * counter (CASET) walks the panel's row axis and vice versa.
  *
  * MADCTL values match the vendor demo: 00h portrait, C0h upside-down
- * portrait, 60h / A0h for the two landscape orientations when
- * CONFIG_NV3007_HW_ROTATION is set. By default landscape keeps the vendor's
- * portrait addressing (MADCTL 40h / 80h) and the driver transposes.
+ * portrait, and 60h / A0h for the two landscape orientations.
  */
 static int nv3007_apply_orientation(const struct device *dev,
 				    const enum display_orientation orientation)
@@ -596,30 +447,17 @@ static int nv3007_apply_orientation(const struct device *dev,
 	uint16_t row_margin;
 	int ret;
 
-	bool hw_mv = IS_ENABLED(CONFIG_NV3007_HW_ROTATION);
-	bool transposed = false;
-
 	switch (orientation) {
 	case DISPLAY_ORIENTATION_NORMAL:
 		break;
 	case DISPLAY_ORIENTATION_ROTATED_90:
-		madctl |= NV3007_MADCTL_MY;
-		if (hw_mv) {
-			madctl |= NV3007_MADCTL_MV;
-		} else {
-			transposed = true;
-		}
+		madctl |= NV3007_MADCTL_MY | NV3007_MADCTL_MV;
 		break;
 	case DISPLAY_ORIENTATION_ROTATED_180:
 		madctl |= NV3007_MADCTL_MY | NV3007_MADCTL_MX;
 		break;
 	case DISPLAY_ORIENTATION_ROTATED_270:
-		madctl |= NV3007_MADCTL_MX;
-		if (hw_mv) {
-			madctl |= NV3007_MADCTL_MV;
-		} else {
-			transposed = true;
-		}
+		madctl |= NV3007_MADCTL_MX | NV3007_MADCTL_MV;
 		break;
 	default:
 		return -ENOTSUP;
@@ -661,10 +499,9 @@ static int nv3007_apply_orientation(const struct device *dev,
 
 	data->madctl = madctl;
 	data->orientation = orientation;
-	data->transposed = transposed;
 
-	LOG_INF("Orientation %d: MADCTL 0x%02x, offsets col %u row %u%s", orientation, madctl,
-		data->caset_offset, data->raset_offset, transposed ? ", transposed" : "");
+	LOG_INF("Orientation %d: MADCTL 0x%02x, offsets col %u row %u", orientation, madctl,
+		data->caset_offset, data->raset_offset);
 
 	return 0;
 }
@@ -695,65 +532,54 @@ static enum display_orientation nv3007_rotation_to_orientation(uint16_t rotation
 	}
 }
 
-#ifdef CONFIG_NV3007_INIT_TEST_PATTERN
+#ifdef CONFIG_NV3007_CLEAR_ON_INIT
 /*
- * Geometry and byte-ratio probe, designed to be read off a single photograph.
+ * Blank the entire frame memory, not just the visible window.
  *
- * It paints three white bands across the long axis, each a different width so
- * they can be told apart no matter which end of the panel row zero lands on:
- *
- *   band A,  40 rows wide: the driver's column window, 2 bytes per pixel
- *   band B,  60 rows wide: the driver's column window, 3 bytes per pixel
- *   band C,  80 rows wide: the whole frame memory width, deliberately overfed
- *
- * How far each band reaches along the short axis is the measurement. A and B
- * differ only in bytes per pixel, so whichever one reaches the full height of
- * the glass is the format the controller is really using. C is fed more data
- * than any interpretation needs, so it shows the true visible extent: if C is
- * taller than both A and B, the configured width and offset are wrong.
+ * The glass covers 142 of the controller's 168 columns, so 26 columns sit
+ * outside anything the application draws. They come up holding noise and the
+ * panel shows it as a coloured fringe along one long edge. Black is all
+ * zeroes in both 16 and 18 bit formats, so one zeroed buffer serves either.
  */
-static int nv3007_raw_window(const struct device *dev, uint16_t c0, uint16_t c1, uint16_t r0,
-			     uint16_t r1)
+static uint8_t nv3007_clear_buf[NV3007_MAX_GRAM_DIM * NV3007_PIXEL_SIZE];
+
+static int nv3007_clear_gram(const struct device *dev)
 {
+	const struct nv3007_config *config = dev->config;
+	const struct nv3007_data *data = dev->data;
+	struct display_buffer_descriptor desc;
+	uint16_t cols = config->gram_width;
+	uint16_t rows = config->gram_height;
 	uint16_t d[2];
 	int ret;
 
-	d[0] = sys_cpu_to_be16(c0);
-	d[1] = sys_cpu_to_be16(c1);
+	/*
+	 * This runs after the orientation is applied, and MV exchanges the two
+	 * address counters, so the window has to be exchanged with it. Getting
+	 * this wrong addresses rows as columns and runs off the end of the
+	 * frame memory, which only shows up when rotation is set in devicetree
+	 * rather than at runtime.
+	 */
+	if (data->madctl & NV3007_MADCTL_MV) {
+		cols = config->gram_height;
+		rows = config->gram_width;
+	}
+
+	/* One row of the clear is cols pixels wide, so that is what must fit */
+	if (cols * NV3007_PIXEL_SIZE > sizeof(nv3007_clear_buf)) {
+		return -EINVAL;
+	}
+
+	d[0] = sys_cpu_to_be16(0);
+	d[1] = sys_cpu_to_be16(cols - 1U);
 	ret = nv3007_transmit(dev, NV3007_CMD_CASET, (uint8_t *)d, sizeof(d));
 	if (ret < 0) {
 		return ret;
 	}
 
-	d[0] = sys_cpu_to_be16(r0);
-	d[1] = sys_cpu_to_be16(r1);
-	return nv3007_transmit(dev, NV3007_CMD_RASET, (uint8_t *)d, sizeof(d));
-}
-
-static int nv3007_raw_fill(const struct device *dev, uint16_t c0, uint16_t c1, uint16_t r0,
-			   uint16_t r1, uint16_t color, size_t bpp)
-{
-	const struct nv3007_config *config = dev->config;
-	struct display_buffer_descriptor desc;
-	uint16_t cols = c1 - c0 + 1U;
-	int ret;
-
-	if (cols > NV3007_MAX_LINE_PIXELS) {
-		return -ENOMEM;
-	}
-
-	for (uint16_t i = 0; i < cols; i++) {
-		if (bpp == 3U) {
-			nv3007_line_buf[i * 3 + 0] = (uint8_t)(((color >> 11) & 0x1F) << 3);
-			nv3007_line_buf[i * 3 + 1] = (uint8_t)(((color >> 5) & 0x3F) << 2);
-			nv3007_line_buf[i * 3 + 2] = (uint8_t)((color & 0x1F) << 3);
-		} else {
-			nv3007_line_buf[i * 2 + 0] = (uint8_t)(color >> 8);
-			nv3007_line_buf[i * 2 + 1] = (uint8_t)(color & 0xFF);
-		}
-	}
-
-	ret = nv3007_raw_window(dev, c0, c1, r0, r1);
+	d[0] = sys_cpu_to_be16(0);
+	d[1] = sys_cpu_to_be16(rows - 1U);
+	ret = nv3007_transmit(dev, NV3007_CMD_RASET, (uint8_t *)d, sizeof(d));
 	if (ret < 0) {
 		return ret;
 	}
@@ -766,144 +592,9 @@ static int nv3007_raw_fill(const struct device *dev, uint16_t c0, uint16_t c1, u
 	desc.width = cols;
 	desc.pitch = cols;
 	desc.height = 1;
-	desc.buf_size = cols * bpp;
+	desc.buf_size = cols * NV3007_PIXEL_SIZE;
 
-	for (uint16_t r = r0; r <= r1; r++) {
-		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
-					     nv3007_line_buf, &desc, PIXEL_FORMAT_RGB_565);
-		if (ret < 0) {
-			return ret;
-		}
-	}
-
-	LOG_INF("fill cols %u-%u rows %u-%u, %u bpp, %u bytes", c0, c1, r0, r1,
-		(unsigned int)bpp, (unsigned int)((r1 - r0 + 1U) * cols * bpp));
-	return 0;
-}
-
-static int nv3007_paint_test_pattern(const struct device *dev)
-{
-	/*
-	 * A ruler across the short axis, in three acts.
-	 *
-	 * Act 1 paints seven wide bands, each spanning every row so it runs
-	 * the whole length of the glass, and each 22 frame memory columns
-	 * wide, which is about 3.3 mm and a seventh of the panel's width.
-	 * Red marks the low column end and green the high one, with white
-	 * bands between them, so a photograph says directly which part of the
-	 * column range reaches the glass and at what scale.
-	 *
-	 * Every window stays inside columns 12 to 153. That is the only range
-	 * that has ever lit this panel, and the previous two probes, which
-	 * both strayed outside it and then showed nothing at all, suggest
-	 * asking for other columns wedges the address logic.
-	 *
-	 * Act 2 tests that suspicion on purpose by writing one band above the
-	 * range. Act 3 repaints the ruler: if act 1 was visible and act 3 is
-	 * not, the out of range write is what breaks the controller, and the
-	 * driver must clamp to the safe window.
-	 */
-	static const struct {
-		uint16_t c0, c1;
-		uint16_t color;
-		const char *name;
-	} bands[] = {
-		{12, 33, 0xF800, "red"},    {34, 55, 0x0000, "black"},
-		{56, 77, 0xFFFF, "white"},  {78, 99, 0x0000, "black"},
-		{100, 121, 0xFFFF, "white"}, {122, 143, 0x0000, "black"},
-		{144, 153, 0x07E0, "green"},
-	};
-	const struct nv3007_config *config = dev->config;
-	struct nv3007_data *data = dev->data;
-	uint16_t last_row = config->gram_height - 1U;
-	uint8_t colmod = NV3007_COLMOD_16BPP;
-	int ret;
-
-	ret = nv3007_blanking_off(dev);
-	if (ret < 0) {
-		return ret;
-	}
-
-	LOG_INF("probe: panel %ux%u, GRAM %ux%u, x-offset %u, MADCTL 0x%02x", config->width,
-		config->height, config->gram_width, config->gram_height, config->x_offset,
-		data->madctl);
-
-	(void)nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
-
-	for (int pass = 0; pass < 2; pass++) {
-		LOG_INF("probe: act %d, ruler across columns 12-153", pass == 0 ? 1 : 3);
-
-		for (size_t i = 0; i < ARRAY_SIZE(bands); i++) {
-			ret = nv3007_raw_fill(dev, bands[i].c0, bands[i].c1, 0, last_row,
-					      bands[i].color, 3U);
-			LOG_INF("probe: band %s cols %u-%u -> %d", bands[i].name, bands[i].c0,
-				bands[i].c1, ret);
-		}
-
-		k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
-
-		if (pass == 0) {
-			LOG_INF("probe: act 2, one band above the safe range (cols 154-167)");
-			ret = nv3007_raw_fill(dev, 154, config->gram_width - 1U, 0, last_row,
-					      0xFFFF, 3U);
-			LOG_INF("probe: out of range band -> %d", ret);
-			k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
-		}
-	}
-
-	LOG_INF("probe: done");
-
-	return 0;
-}
-#endif /* CONFIG_NV3007_INIT_TEST_PATTERN */
-
-#ifdef CONFIG_NV3007_CLEAR_ON_INIT
-/*
- * Blank the entire frame memory, not just the visible window.
- *
- * The glass covers 142 of the controller's 168 columns, so 26 columns sit
- * outside anything the application draws. They come up holding noise and the
- * panel shows it as a coloured fringe along one long edge. Black is all
- * zeroes in both 16 and 18 bit formats, so one zeroed buffer serves either.
- */
-static uint8_t nv3007_clear_buf[NV3007_MAX_GRAM_WIDTH * 3U];
-
-static int nv3007_clear_gram(const struct device *dev)
-{
-	const struct nv3007_config *config = dev->config;
-	struct display_buffer_descriptor desc;
-	uint16_t d[2];
-	int ret;
-
-	if (config->gram_width > NV3007_MAX_GRAM_WIDTH) {
-		return -EINVAL;
-	}
-
-	d[0] = sys_cpu_to_be16(0);
-	d[1] = sys_cpu_to_be16(config->gram_width - 1U);
-	ret = nv3007_transmit(dev, NV3007_CMD_CASET, (uint8_t *)d, sizeof(d));
-	if (ret < 0) {
-		return ret;
-	}
-
-	d[0] = sys_cpu_to_be16(0);
-	d[1] = sys_cpu_to_be16(config->gram_height - 1U);
-	ret = nv3007_transmit(dev, NV3007_CMD_RASET, (uint8_t *)d, sizeof(d));
-	if (ret < 0) {
-		return ret;
-	}
-
-	ret = nv3007_transmit(dev, NV3007_CMD_RAMWR, NULL, 0);
-	if (ret < 0) {
-		return ret;
-	}
-
-	desc.width = config->gram_width;
-	desc.pitch = config->gram_width;
-	desc.height = 1;
-	desc.buf_size = config->gram_width * NV3007_BYTES_PER_PIXEL;
-
-	for (uint16_t r = 0; r < config->gram_height; r++) {
+	for (uint16_t r = 0; r < rows; r++) {
 		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
 					     nv3007_clear_buf, &desc, PIXEL_FORMAT_RGB_565);
 		if (ret < 0) {
@@ -911,7 +602,7 @@ static int nv3007_clear_gram(const struct device *dev)
 		}
 	}
 
-	LOG_INF("Cleared %ux%u frame memory", config->gram_width, config->gram_height);
+	LOG_INF("Cleared %ux%u frame memory", cols, rows);
 	return 0;
 }
 #endif /* CONFIG_NV3007_CLEAR_ON_INIT */
@@ -962,7 +653,7 @@ static int nv3007_init(const struct device *dev)
 	}
 
 	{
-		uint8_t colmod = NV3007_COLMOD_VAL;
+		uint8_t colmod = NV3007_COLMOD_16BPP;
 
 		ret = nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
 		if (ret < 0) {
@@ -997,20 +688,12 @@ static int nv3007_init(const struct device *dev)
 	}
 #endif
 
-#ifdef CONFIG_NV3007_INIT_TEST_PATTERN
-	ret = nv3007_paint_test_pattern(dev);
-	if (ret < 0) {
-		LOG_ERR("Failed to paint test pattern (%d)", ret);
-		return ret;
-	}
-#else
 	/* Leave the panel blanked; the application turns it on with display_blanking_off() */
 	ret = nv3007_blanking_on(dev);
 	if (ret < 0) {
 		LOG_ERR("Failed to blank display (%d)", ret);
 		return ret;
 	}
-#endif
 
 	LOG_INF("NV3007 ready: %ux%u panel in %ux%u GRAM, rotation %u", config->width,
 		config->height, config->gram_width, config->gram_height, config->rotation);
@@ -1046,12 +729,6 @@ static DEVICE_API(display, nv3007_api) = {
 		 ? SPI_WORD_SET(8)                                                               \
 		 : SPI_WORD_SET(9))
 
-#ifdef CONFIG_NV3007_SPI_MODE3
-#define NV3007_SPI_MODE_FLAGS (SPI_MODE_CPOL | SPI_MODE_CPHA)
-#else
-#define NV3007_SPI_MODE_FLAGS 0
-#endif
-
 /*
  * The {0} default keeps the array valid C when the property is absent. Its
  * length is then reported as 0, so the dummy byte is never read.
@@ -1067,7 +744,7 @@ static DEVICE_API(display, nv3007_api) = {
 	static const struct nv3007_config nv3007_config_##inst = {                               \
 		.mipi_dbi = DEVICE_DT_GET(DT_INST_PARENT(inst)),                                 \
 		.dbi_config = MIPI_DBI_CONFIG_DT_INST(                                           \
-			inst, NV3007_WORD_SIZE(inst) | SPI_OP_MODE_MASTER |                       			NV3007_SPI_MODE_FLAGS, 0),                                               \
+			inst, NV3007_WORD_SIZE(inst) | SPI_OP_MODE_MASTER, 0),                   \
 		.width = DT_INST_PROP(inst, width),                                              \
 		.height = DT_INST_PROP(inst, height),                                            \
 		.gram_width = DT_INST_PROP(inst, gram_width),                                    \

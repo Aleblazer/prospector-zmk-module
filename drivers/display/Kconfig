@@ -27,6 +27,10 @@ config NV3007_RESET_RECOVERY_MS
 config NV3007_SLEEP_OUT_DELAY_MS
 	int "Delay after Sleep Out before Display On (ms)"
 	default 220
+	help
+	  The vendor sequence asks for 220 ms. Sleep Out is issued twice, once
+	  to wake the controller before its registers are programmed and once
+	  after, so this dominates the driver's startup time.
 
 config NV3007_CLEAR_ON_INIT
 	bool "Clear the whole frame memory during init"
@@ -37,27 +41,6 @@ config NV3007_CLEAR_ON_INIT
 	  with and the panel displays them as a fringe of noise along one
 	  edge. The application only ever draws inside the window, so clear
 	  everything once at init. Costs one full frame of writes at startup.
-
-config NV3007_PIXEL_FORMAT_18BIT
-	bool "Drive the panel in 18 bits per pixel (RGB666)"
-	help
-	  The NV3007 powers up in 18 bit mode (register 3Ah defaults to 06h) and
-	  some panels ignore the 16 bit setting. In that case the controller
-	  consumes three bytes per pixel while the host sends two, so a full
-	  screen write covers two thirds of the glass in fine alternating
-	  magenta and green lines. Enable this to keep the panel in its default
-	  18 bit mode; the driver still accepts RGB565 from the application and
-	  expands each pixel to RGB666 as it writes.
-
-config NV3007_HW_ROTATION
-	bool "Use the MADCTL row/column exchange bit for 90/270 degree orientations"
-	default y
-	help
-	  Landscape orientations set the MADCTL MV bit so the controller walks
-	  the frame memory transposed. This is what the esp_lcd_nv3007 driver
-	  does for this panel (MADCTL A0h with a 14 pixel row offset), so it is
-	  the default. Disable to keep the controller in portrait addressing and
-	  transpose pixels in the driver instead, which costs a copy per line.
 
 config NV3007_INIT_F9
 	bool "Send F1=0Eh and F9=17h separately (LVGL / Arduino_GFX init)"
@@ -71,46 +54,8 @@ config NV3007_INIT_F9
 	  where the polarity signal changes over, and the registers beside it
 	  address the first and last half of the source enable and precharge
 	  signals separately. A wrong changeover point therefore shows up as
-	  banding confined to one half of the panel. Enable this if you see
-	  that.
-
-config NV3007_SPI_MODE3
-	bool "Force SPI mode 3 (CPOL=1, CPHA=1) regardless of devicetree"
-	help
-	  The vendor demo bit-bangs the panel with the clock idling high and the
-	  ESP-IDF port uses SPI mode 3. The MIPI DBI node's mipi-cpol/mipi-cpha
-	  properties do the same thing; this option is a build-time override
-	  for bring-up without touching the overlay.
-
-config NV3007_INIT_TEST_PATTERN
-	bool "Probe the pixel format from the driver after init (debug)"
-	help
-	  After init the driver paints a ruler of seven wide colour bands
-	  across the short axis, holds it, writes one band outside the safe
-	  column range, then repaints the ruler. The first view shows which
-	  columns reach the glass and at what scale; whether the repaint still
-	  appears shows whether an out of range window wedges the controller.
-	  Each act is held for NV3007_INIT_TEST_PATTERN_HOLD_MS.
-
-config NV3007_INIT_F9
-	bool "Send F9=17h (LVGL / Arduino_GFX init) instead of the vendor's stray byte"
-	help
-	  The EastRising demo writes F1 0E followed by a bare 17h with the F9
-	  command commented out; LVGL and Arduino_GFX send F9 17 instead. F1
-	  takes a single parameter per the datasheet, so the two differ in
-	  whether F9 is programmed. Enable to use the LVGL variant.
-
-config NV3007_SPI_MODE3
-	bool "Force SPI mode 3 (CPOL=1, CPHA=1) regardless of devicetree"
-	help
-	  The vendor demo bit-bangs the panel with the clock idling high and the
-	  ESP-IDF port uses SPI mode 3. The MIPI DBI node's mipi-cpol/mipi-cpha
-	  properties do the same thing; this option is a build-time override
-	  for bring-up without touching the overlay.
-
-config NV3007_INIT_TEST_PATTERN_HOLD_MS
-	int "Test pattern hold time (ms)"
-	default 3000
-	depends on NV3007_INIT_TEST_PATTERN
+	  banding confined to one half of the panel, which is what this fixed
+	  on the 2.79" panel it was developed against. Turn it off to get the
+	  literal vendor behaviour.
 
 endif # NV3007
