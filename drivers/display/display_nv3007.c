@@ -54,7 +54,7 @@ LOG_MODULE_REGISTER(display_nv3007, CONFIG_DISPLAY_LOG_LEVEL);
 static uint8_t nv3007_line_buf[NV3007_MAX_LINE_PIXELS * 3U];
 
 /* Expand n RGB565 pixels (big endian on the wire) into RGB666, 3 bytes each */
-static void nv3007_expand_rgb666(uint8_t *dst, const uint8_t *src, size_t n)
+__maybe_unused static void nv3007_expand_rgb666(uint8_t *dst, const uint8_t *src, size_t n)
 {
 	for (size_t i = 0; i < n; i++) {
 		uint16_t px = sys_get_be16(&src[i * 2]);
@@ -659,19 +659,24 @@ static enum display_orientation nv3007_rotation_to_orientation(uint16_t rotation
 
 #ifdef CONFIG_NV3007_INIT_TEST_PATTERN
 /*
- * Pixel format probe. The NV3007 powers up in 18 bit mode and some panels
- * ignore a 16 bit COLMOD, in which case the controller eats three bytes per
- * pixel while we send two: a solid fill then covers two thirds of the glass
- * in fine alternating magenta and green lines. Fill the screen solid in each
- * mode in turn and let the eye decide which one the panel honours.
+ * Coverage probe.
+ *
+ * White is the one colour that survives being misread: FF FF FF is white
+ * whether the controller groups the stream into two byte or three byte
+ * pixels. So filling the screen white and looking at how much of the glass
+ * changes measures the host-to-panel byte ratio on its own, with no colour
+ * confusion. Send a screen's worth of white at two bytes per pixel: full
+ * coverage means the panel really is in 16 bit mode, two thirds means it is
+ * consuming three bytes per pixel. Repeat at three bytes per pixel for the
+ * opposite reading. Each fill is preceded by a black clear so that what
+ * changes is unambiguous.
  */
-static int nv3007_fill_solid(const struct device *dev, uint16_t color, bool bpp18)
+static int nv3007_fill(const struct device *dev, uint16_t color, size_t bpp)
 {
 	const struct nv3007_config *config = dev->config;
 	struct display_capabilities caps;
 	struct display_buffer_descriptor desc;
-	uint8_t colmod = bpp18 ? NV3007_COLMOD_18BPP : NV3007_COLMOD_16BPP;
-	size_t bpp = bpp18 ? 3U : 2U;
+	uint32_t bytes = 0;
 	int ret;
 
 	nv3007_get_capabilities(dev, &caps);
@@ -679,13 +684,8 @@ static int nv3007_fill_solid(const struct device *dev, uint16_t color, bool bpp1
 		return -ENOMEM;
 	}
 
-	ret = nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
-	if (ret < 0) {
-		return ret;
-	}
-
 	for (uint16_t i = 0; i < caps.x_resolution; i++) {
-		if (bpp18) {
+		if (bpp == 3U) {
 			nv3007_line_buf[i * 3 + 0] = (uint8_t)(((color >> 11) & 0x1F) << 3);
 			nv3007_line_buf[i * 3 + 1] = (uint8_t)(((color >> 5) & 0x3F) << 2);
 			nv3007_line_buf[i * 3 + 2] = (uint8_t)((color & 0x1F) << 3);
@@ -697,11 +697,13 @@ static int nv3007_fill_solid(const struct device *dev, uint16_t color, bool bpp1
 
 	ret = nv3007_set_mem_area(dev, 0, 0, caps.x_resolution, caps.y_resolution);
 	if (ret < 0) {
+		LOG_ERR("fill: set_mem_area failed (%d)", ret);
 		return ret;
 	}
 
 	ret = nv3007_transmit(dev, NV3007_CMD_RAMWR, NULL, 0);
 	if (ret < 0) {
+		LOG_ERR("fill: RAMWR failed (%d)", ret);
 		return ret;
 	}
 
@@ -714,25 +716,22 @@ static int nv3007_fill_solid(const struct device *dev, uint16_t color, bool bpp1
 		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
 					     nv3007_line_buf, &desc, PIXEL_FORMAT_RGB_565);
 		if (ret < 0) {
+			LOG_ERR("fill: line %u failed (%d)", y, ret);
 			return ret;
 		}
+		bytes += desc.buf_size;
 	}
 
+	LOG_INF("fill: colour %04x, %u bpp, %ux%u, %u bytes sent", color, (unsigned int)bpp,
+		caps.x_resolution, caps.y_resolution, bytes);
 	return 0;
 }
 
 static int nv3007_paint_test_pattern(const struct device *dev)
 {
-	static const struct {
-		uint16_t color;
-		bool bpp18;
-		const char *label;
-	} phases[] = {
-		{0xF800, false, "red, 16 bit"},
-		{0xF800, true, "red, 18 bit"},
-		{0x001F, true, "blue, 18 bit"},
-	};
-	uint8_t colmod = NV3007_COLMOD_VAL;
+	const struct nv3007_config *config = dev->config;
+	struct nv3007_data *data = dev->data;
+	uint8_t colmod;
 	int ret;
 
 	ret = nv3007_blanking_off(dev);
@@ -740,19 +739,44 @@ static int nv3007_paint_test_pattern(const struct device *dev)
 		return ret;
 	}
 
-	for (size_t i = 0; i < ARRAY_SIZE(phases); i++) {
-		ret = nv3007_fill_solid(dev, phases[i].color, phases[i].bpp18);
-		if (ret < 0) {
-			LOG_ERR("Probe phase %s failed (%d)", phases[i].label, ret);
-			return ret;
-		}
+	LOG_INF("probe: panel %ux%u in %ux%u GRAM, x-offset %u, y-offset %u", config->width,
+		config->height, config->gram_width, config->gram_height, config->x_offset,
+		config->y_offset);
+	LOG_INF("probe: MADCTL 0x%02x, CASET offset %u, RASET offset %u", data->madctl,
+		data->caset_offset, data->raset_offset);
 
-		LOG_INF("Probe phase %u: %s", (unsigned int)i + 1U, phases[i].label);
-		k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
+	/* Phase 1: white at two bytes per pixel */
+	colmod = NV3007_COLMOD_16BPP;
+	ret = nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
+	if (ret < 0) {
+		return ret;
 	}
+	(void)nv3007_fill(dev, 0x0000, 2U);
+	LOG_INF("probe: phase 1, white at 2 bytes per pixel");
+	(void)nv3007_fill(dev, 0xFFFF, 2U);
+	k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
 
-	/* Leave the panel in the format the rest of the driver will use */
-	return nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
+	/* Phase 2: white at three bytes per pixel */
+	colmod = NV3007_COLMOD_18BPP;
+	ret = nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
+	if (ret < 0) {
+		return ret;
+	}
+	(void)nv3007_fill(dev, 0x0000, 3U);
+	LOG_INF("probe: phase 2, white at 3 bytes per pixel");
+	(void)nv3007_fill(dev, 0xFFFF, 3U);
+	k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
+
+	/* Phase 3: back to the configured format, clear to black */
+	colmod = NV3007_COLMOD_VAL;
+	ret = nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
+	if (ret < 0) {
+		return ret;
+	}
+	(void)nv3007_fill(dev, 0x0000, NV3007_BYTES_PER_PIXEL);
+	LOG_INF("probe: done");
+
+	return 0;
 }
 #endif /* CONFIG_NV3007_INIT_TEST_PATTERN */
 

@@ -68,12 +68,12 @@ config NV3007_SPI_MODE3
 config NV3007_INIT_TEST_PATTERN
 	bool "Probe the pixel format from the driver after init (debug)"
 	help
-	  After init the driver turns the panel on and fills the whole screen
-	  three times, holding each for NV3007_INIT_TEST_PATTERN_HOLD_MS:
-	  red in 16 bit mode, then red in 18 bit mode, then blue in 18 bit
-	  mode. Exactly one of the red fills looks like solid red; that says
-	  which pixel format the panel actually honours. The blue fill then
-	  confirms the colour order. Boot is delayed by three hold times.
+	  After init the driver fills the whole screen white twice, once at two
+	  bytes per pixel and once at three, holding each for
+	  NV3007_INIT_TEST_PATTERN_HOLD_MS. White reads as white whichever way
+	  the controller groups the byte stream, so how much of the glass turns
+	  white measures the host-to-panel byte ratio directly. It also logs the
+	  geometry, MADCTL and byte counts. Boot is delayed by two hold times.
 
 config NV3007_INIT_F9
 	bool "Send F9=17h (LVGL / Arduino_GFX init) instead of the vendor's stray byte"
