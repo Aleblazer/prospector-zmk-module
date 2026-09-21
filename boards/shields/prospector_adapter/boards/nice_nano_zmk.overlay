@@ -50,10 +50,8 @@ disp_spi: &pro_micro_spi {
         nv3007: nv3007@0 {
             compatible = "newvision,nv3007";
             reg = <0>;
-            /* nrfx rounds this down to a supported SPIM rate (8/16/32 MHz). The ST7789
-             * config asked for 30 MHz and actually ran at 16 MHz; 32 MHz corrupts the
-             * pixel stream over jumper wires, so start at 8 MHz and raise it once the
-             * panel is proven.
+            /* pro_micro_spi is SPIM0, which tops out at 8 MHz. Anything higher
+             * is rounded back down to 8, so leave it here.
              */
             mipi-max-frequency = <8000000>;
             mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
