@@ -29,9 +29,42 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(display_nv3007, CONFIG_DISPLAY_LOG_LEVEL);
 
-#define NV3007_PIXEL_SIZE 2U /* RGB565 only */
+/* The application always hands us RGB565; NV3007_BYTES_PER_PIXEL is what goes
+ * out on the wire, which is three bytes in the panel's native 18 bit mode.
+ */
+#define NV3007_PIXEL_SIZE 2U /* RGB565 in */
+#ifdef CONFIG_NV3007_PIXEL_FORMAT_18BIT
+#define NV3007_BYTES_PER_PIXEL 3U
+#define NV3007_COLMOD_VAL      NV3007_COLMOD_18BPP
+#else
+#define NV3007_BYTES_PER_PIXEL 2U
+#define NV3007_COLMOD_VAL      NV3007_COLMOD_16BPP
+#endif
+
 /* Largest frame memory row the driver can transpose in software (NV3007: 168 columns) */
 #define NV3007_MAX_GRAM_WIDTH 168U
+/* Longest panel axis, for the line buffers below */
+#define NV3007_MAX_LINE_PIXELS 428U
+
+#if defined(CONFIG_NV3007_PIXEL_FORMAT_18BIT) || defined(CONFIG_NV3007_INIT_TEST_PATTERN)
+#define NV3007_NEEDS_LINE_BUF 1
+/* In .bss, never on the stack: driver init runs on the main thread during
+ * POST_KERNEL, where CONFIG_MAIN_STACK_SIZE can be as little as 1 KiB.
+ */
+static uint8_t nv3007_line_buf[NV3007_MAX_LINE_PIXELS * 3U];
+
+/* Expand n RGB565 pixels (big endian on the wire) into RGB666, 3 bytes each */
+static void nv3007_expand_rgb666(uint8_t *dst, const uint8_t *src, size_t n)
+{
+	for (size_t i = 0; i < n; i++) {
+		uint16_t px = sys_get_be16(&src[i * 2]);
+
+		dst[i * 3 + 0] = (uint8_t)(((px >> 11) & 0x1F) << 3);
+		dst[i * 3 + 1] = (uint8_t)(((px >> 5) & 0x3F) << 2);
+		dst[i * 3 + 2] = (uint8_t)((px & 0x1F) << 3);
+	}
+}
+#endif
 
 struct nv3007_config {
 	const struct device *mipi_dbi;
@@ -197,7 +230,7 @@ static const uint8_t nv3007_init_seq[] = {
 	0x44, 2, 0x00, 0x10,
 	0x46, 1, 0x10,
 	NV3007_CMD_PAGE_SEL, 1, 0x00,
-	NV3007_CMD_COLMOD, 1, NV3007_COLMOD_16BPP,
+	NV3007_CMD_COLMOD, 1, NV3007_COLMOD_VAL,
 	NV3007_INIT_END,
 };
 
@@ -296,6 +329,11 @@ static int nv3007_set_mem_area(const struct device *dev, const uint16_t x, const
 	return nv3007_transmit(dev, NV3007_CMD_RASET, (uint8_t *)spi_data, sizeof(spi_data));
 }
 
+BUILD_ASSERT(!IS_ENABLED(CONFIG_NV3007_PIXEL_FORMAT_18BIT) ||
+		     IS_ENABLED(CONFIG_NV3007_HW_ROTATION),
+	     "18 bit output requires NV3007_HW_ROTATION: the software transpose "
+	     "path does not expand pixels");
+
 /*
  * Landscape write without the MV bit: the block (x, y, w, h) in landscape
  * coordinates occupies frame memory columns y..y+h-1 and rows x..x+w-1. The
@@ -352,16 +390,61 @@ static int nv3007_write_transposed(const struct device *dev, const uint16_t x,
 	return 0;
 }
 
+#ifdef CONFIG_NV3007_PIXEL_FORMAT_18BIT
+/* Expand each RGB565 line to RGB666 on the way out to the panel */
+static int nv3007_write_rgb666(const struct device *dev, const uint16_t x, const uint16_t y,
+			       const struct display_buffer_descriptor *desc, const uint8_t *buf)
+{
+	const struct nv3007_config *config = dev->config;
+	struct display_buffer_descriptor mipi_desc;
+	int ret;
+
+	if (desc->width > NV3007_MAX_LINE_PIXELS) {
+		return -EINVAL;
+	}
+
+	ret = nv3007_set_mem_area(dev, x, y, desc->width, desc->height);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = nv3007_transmit(dev, NV3007_CMD_RAMWR, NULL, 0);
+	if (ret < 0) {
+		return ret;
+	}
+
+	mipi_desc.width = desc->width;
+	mipi_desc.pitch = desc->width;
+	mipi_desc.height = 1;
+	mipi_desc.buf_size = desc->width * NV3007_BYTES_PER_PIXEL;
+
+	for (uint16_t row = 0; row < desc->height; row++) {
+		nv3007_expand_rgb666(nv3007_line_buf,
+				     buf + row * desc->pitch * NV3007_PIXEL_SIZE, desc->width);
+
+		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
+					     nv3007_line_buf, &mipi_desc, PIXEL_FORMAT_RGB_565);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	return 0;
+}
+#endif /* CONFIG_NV3007_PIXEL_FORMAT_18BIT */
+
 static int nv3007_write(const struct device *dev, const uint16_t x, const uint16_t y,
 			const struct display_buffer_descriptor *desc, const void *buf)
 {
-	const struct nv3007_config *config = dev->config;
 	struct nv3007_data *data = dev->data;
-	struct display_buffer_descriptor mipi_desc;
 	const uint8_t *write_data_start = (const uint8_t *)buf;
+#ifndef CONFIG_NV3007_PIXEL_FORMAT_18BIT
+	const struct nv3007_config *config = dev->config;
+	struct display_buffer_descriptor mipi_desc;
 	uint16_t nbr_of_writes;
 	uint16_t write_h;
 	int ret;
+#endif
 
 	__ASSERT(desc->width <= desc->pitch, "Pitch is smaller than width");
 	__ASSERT((desc->pitch * NV3007_PIXEL_SIZE * desc->height) <= desc->buf_size,
@@ -373,6 +456,10 @@ static int nv3007_write(const struct device *dev, const uint16_t x, const uint16
 	if (data->transposed) {
 		return nv3007_write_transposed(dev, x, y, desc, write_data_start);
 	}
+
+#ifdef CONFIG_NV3007_PIXEL_FORMAT_18BIT
+	return nv3007_write_rgb666(dev, x, y, desc, write_data_start);
+#else
 
 	ret = nv3007_set_mem_area(dev, x, y, desc->width, desc->height);
 	if (ret < 0) {
@@ -411,6 +498,7 @@ static int nv3007_write(const struct device *dev, const uint16_t x, const uint16
 	}
 
 	return 0;
+#endif /* CONFIG_NV3007_PIXEL_FORMAT_18BIT */
 }
 
 static void nv3007_get_capabilities(const struct device *dev,
@@ -571,74 +659,100 @@ static enum display_orientation nv3007_rotation_to_orientation(uint16_t rotation
 
 #ifdef CONFIG_NV3007_INIT_TEST_PATTERN
 /*
- * Debug aid: paint the whole panel straight from the driver. Along the long
- * axis: red, green, blue thirds; a white 1-pixel border on every edge (proves
- * the window offsets); a black square inside the red bar (proves inversion).
- * Pixels are RGB565, high byte first on the wire.
+ * Pixel format probe. The NV3007 powers up in 18 bit mode and some panels
+ * ignore a 16 bit COLMOD, in which case the controller eats three bytes per
+ * pixel while we send two: a solid fill then covers two thirds of the glass
+ * in fine alternating magenta and green lines. Fill the screen solid in each
+ * mode in turn and let the eye decide which one the panel honours.
  */
-/*
- * Not on the stack: driver init runs on the main thread during POST_KERNEL,
- * where a kilobyte of locals is enough to overflow CONFIG_MAIN_STACK_SIZE.
- */
-static uint8_t nv3007_test_line[428 * NV3007_PIXEL_SIZE];
-
-static int nv3007_paint_test_pattern(const struct device *dev)
+static int nv3007_fill_solid(const struct device *dev, uint16_t color, bool bpp18)
 {
+	const struct nv3007_config *config = dev->config;
 	struct display_capabilities caps;
 	struct display_buffer_descriptor desc;
-	uint8_t *line = nv3007_test_line;
+	uint8_t colmod = bpp18 ? NV3007_COLMOD_18BPP : NV3007_COLMOD_16BPP;
+	size_t bpp = bpp18 ? 3U : 2U;
 	int ret;
 
 	nv3007_get_capabilities(dev, &caps);
-	if (caps.x_resolution * NV3007_PIXEL_SIZE > sizeof(nv3007_test_line)) {
+	if (caps.x_resolution > NV3007_MAX_LINE_PIXELS) {
 		return -ENOMEM;
 	}
 
-	desc.buf_size = caps.x_resolution * 2;
+	ret = nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
+	if (ret < 0) {
+		return ret;
+	}
+
+	for (uint16_t i = 0; i < caps.x_resolution; i++) {
+		if (bpp18) {
+			nv3007_line_buf[i * 3 + 0] = (uint8_t)(((color >> 11) & 0x1F) << 3);
+			nv3007_line_buf[i * 3 + 1] = (uint8_t)(((color >> 5) & 0x3F) << 2);
+			nv3007_line_buf[i * 3 + 2] = (uint8_t)((color & 0x1F) << 3);
+		} else {
+			nv3007_line_buf[i * 2 + 0] = (uint8_t)(color >> 8);
+			nv3007_line_buf[i * 2 + 1] = (uint8_t)(color & 0xFF);
+		}
+	}
+
+	ret = nv3007_set_mem_area(dev, 0, 0, caps.x_resolution, caps.y_resolution);
+	if (ret < 0) {
+		return ret;
+	}
+
+	ret = nv3007_transmit(dev, NV3007_CMD_RAMWR, NULL, 0);
+	if (ret < 0) {
+		return ret;
+	}
+
 	desc.width = caps.x_resolution;
 	desc.pitch = caps.x_resolution;
 	desc.height = 1;
+	desc.buf_size = caps.x_resolution * bpp;
 
 	for (uint16_t y = 0; y < caps.y_resolution; y++) {
-		for (uint16_t x = 0; x < caps.x_resolution; x++) {
-			uint16_t px;
-			bool long_is_x = caps.x_resolution >= caps.y_resolution;
-			uint16_t along = long_is_x ? x : y;
-			uint16_t along_max = long_is_x ? caps.x_resolution : caps.y_resolution;
-			uint16_t across = long_is_x ? y : x;
-			uint16_t across_max = long_is_x ? caps.y_resolution : caps.x_resolution;
-
-			if (x == 0 || y == 0 || x == caps.x_resolution - 1 ||
-			    y == caps.y_resolution - 1) {
-				px = 0xFFFF; /* white border */
-			} else if (along < along_max / 3) {
-				/* red bar with a black square in its middle */
-				bool sq = along > along_max / 6 - 15 && along < along_max / 6 + 15 &&
-					  across > across_max / 2 - 15 && across < across_max / 2 + 15;
-				px = sq ? 0x0000 : 0xF800;
-			} else if (along < 2 * along_max / 3) {
-				px = 0x07E0; /* green */
-			} else {
-				px = 0x001F; /* blue */
-			}
-			line[2 * x] = px >> 8;
-			line[2 * x + 1] = px & 0xFF;
-		}
-		ret = nv3007_write(dev, 0, y, &desc, line);
+		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
+					     nv3007_line_buf, &desc, PIXEL_FORMAT_RGB_565);
 		if (ret < 0) {
 			return ret;
 		}
 	}
+
+	return 0;
+}
+
+static int nv3007_paint_test_pattern(const struct device *dev)
+{
+	static const struct {
+		uint16_t color;
+		bool bpp18;
+		const char *label;
+	} phases[] = {
+		{0xF800, false, "red, 16 bit"},
+		{0xF800, true, "red, 18 bit"},
+		{0x001F, true, "blue, 18 bit"},
+	};
+	uint8_t colmod = NV3007_COLMOD_VAL;
+	int ret;
 
 	ret = nv3007_blanking_off(dev);
 	if (ret < 0) {
 		return ret;
 	}
 
-	LOG_INF("Test pattern painted (%ux%u), holding %d ms", caps.x_resolution,
-		caps.y_resolution, CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS);
-	k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
-	return 0;
+	for (size_t i = 0; i < ARRAY_SIZE(phases); i++) {
+		ret = nv3007_fill_solid(dev, phases[i].color, phases[i].bpp18);
+		if (ret < 0) {
+			LOG_ERR("Probe phase %s failed (%d)", phases[i].label, ret);
+			return ret;
+		}
+
+		LOG_INF("Probe phase %u: %s", (unsigned int)i + 1U, phases[i].label);
+		k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
+	}
+
+	/* Leave the panel in the format the rest of the driver will use */
+	return nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
 }
 #endif /* CONFIG_NV3007_INIT_TEST_PATTERN */
 
@@ -688,7 +802,7 @@ static int nv3007_init(const struct device *dev)
 	}
 
 	{
-		uint8_t colmod = NV3007_COLMOD_16BPP;
+		uint8_t colmod = NV3007_COLMOD_VAL;
 
 		ret = nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
 		if (ret < 0) {

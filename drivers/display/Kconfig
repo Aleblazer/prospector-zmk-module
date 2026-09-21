@@ -28,6 +28,17 @@ config NV3007_SLEEP_OUT_DELAY_MS
 	int "Delay after Sleep Out before Display On (ms)"
 	default 220
 
+config NV3007_PIXEL_FORMAT_18BIT
+	bool "Drive the panel in 18 bits per pixel (RGB666)"
+	help
+	  The NV3007 powers up in 18 bit mode (register 3Ah defaults to 06h) and
+	  some panels ignore the 16 bit setting. In that case the controller
+	  consumes three bytes per pixel while the host sends two, so a full
+	  screen write covers two thirds of the glass in fine alternating
+	  magenta and green lines. Enable this to keep the panel in its default
+	  18 bit mode; the driver still accepts RGB565 from the application and
+	  expands each pixel to RGB666 as it writes.
+
 config NV3007_HW_ROTATION
 	bool "Use the MADCTL row/column exchange bit for 90/270 degree orientations"
 	default y
@@ -55,14 +66,14 @@ config NV3007_SPI_MODE3
 	  for bring-up without touching the overlay.
 
 config NV3007_INIT_TEST_PATTERN
-	bool "Paint a test pattern from the driver after init (debug)"
+	bool "Probe the pixel format from the driver after init (debug)"
 	help
-	  After the init sequence the driver turns the panel on and fills it
-	  with red / green / blue bars along the long axis, a white 1-pixel
-	  border, and a black square in the red bar, then holds the image for
-	  NV3007_INIT_TEST_PATTERN_HOLD_MS before returning. Use it to prove
-	  the SPI link, window offsets, orientation and colour order without
-	  LVGL in the loop. Boot is delayed by the hold time.
+	  After init the driver turns the panel on and fills the whole screen
+	  three times, holding each for NV3007_INIT_TEST_PATTERN_HOLD_MS:
+	  red in 16 bit mode, then red in 18 bit mode, then blue in 18 bit
+	  mode. Exactly one of the red fills looks like solid red; that says
+	  which pixel format the panel actually honours. The blue fill then
+	  confirms the colour order. Boot is delayed by three hold times.
 
 config NV3007_INIT_F9
 	bool "Send F9=17h (LVGL / Arduino_GFX init) instead of the vendor's stray byte"
