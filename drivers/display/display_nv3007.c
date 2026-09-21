@@ -79,6 +79,8 @@ struct nv3007_config {
 	uint16_t ready_time_ms;
 	bool bgr;
 	bool inversion_on;
+	const uint8_t *extra_init;
+	size_t extra_init_len;
 };
 
 struct nv3007_data {
@@ -247,18 +249,21 @@ static int nv3007_transmit(const struct device *dev, uint8_t cmd, const uint8_t 
 				      tx_count);
 }
 
-static int nv3007_send_init_seq(const struct device *dev)
+static int nv3007_send_cmd_table(const struct device *dev, const uint8_t *table, size_t len,
+				 unsigned int *count)
 {
-	const uint8_t *const end = nv3007_init_seq + ARRAY_SIZE(nv3007_init_seq);
-	const uint8_t *p = nv3007_init_seq;
-	unsigned int count = 0;
+	const uint8_t *const end = table + len;
+	const uint8_t *p = table;
 	int ret;
 
 	while (p < end) {
 		uint8_t cmd = p[0];
 		uint8_t n = p[1];
 
-		__ASSERT(p + 2 + n <= end, "malformed NV3007 init table");
+		if (p + 2 + n > end) {
+			LOG_ERR("Malformed init table at offset %u", (unsigned int)(p - table));
+			return -EINVAL;
+		}
 
 		ret = nv3007_transmit(dev, cmd, n ? &p[2] : NULL, n);
 		if (ret < 0) {
@@ -266,11 +271,33 @@ static int nv3007_send_init_seq(const struct device *dev)
 			return ret;
 		}
 		p += 2 + n;
-		count++;
+		(*count)++;
 	}
 
-	LOG_INF("Sent %u init commands (%u bytes of table)", count,
-		(unsigned int)ARRAY_SIZE(nv3007_init_seq));
+	return 0;
+}
+
+static int nv3007_send_init_seq(const struct device *dev)
+{
+	const struct nv3007_config *config = dev->config;
+	unsigned int count = 0;
+	unsigned int extra = 0;
+	int ret;
+
+	ret = nv3007_send_cmd_table(dev, nv3007_init_seq, ARRAY_SIZE(nv3007_init_seq), &count);
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (config->extra_init_len) {
+		ret = nv3007_send_cmd_table(dev, config->extra_init, config->extra_init_len,
+					    &extra);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	LOG_INF("Sent %u init commands plus %u overrides", count, extra);
 	return 0;
 }
 
@@ -1026,6 +1053,9 @@ static DEVICE_API(display, nv3007_api) = {
 #endif
 
 #define NV3007_INIT(inst)                                                                        \
+	static const uint8_t nv3007_extra_init_##inst[] =                                        \
+		DT_INST_PROP_OR(inst, extra_init_cmds, {});                                      \
+                                                                                                 \
 	static const struct nv3007_config nv3007_config_##inst = {                               \
 		.mipi_dbi = DEVICE_DT_GET(DT_INST_PARENT(inst)),                                 \
 		.dbi_config = MIPI_DBI_CONFIG_DT_INST(                                           \
@@ -1040,6 +1070,8 @@ static DEVICE_API(display, nv3007_api) = {
 		.ready_time_ms = DT_INST_PROP(inst, ready_time_ms),                              \
 		.bgr = DT_INST_PROP(inst, bgr),                                                  \
 		.inversion_on = DT_INST_PROP(inst, inversion_on),                                \
+		.extra_init = nv3007_extra_init_##inst,                                          \
+		.extra_init_len = sizeof(nv3007_extra_init_##inst),                              \
 	};                                                                                       \
                                                                                                  \
 	static struct nv3007_data nv3007_data_##inst = {                                         \

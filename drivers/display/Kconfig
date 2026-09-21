@@ -61,6 +61,7 @@ config NV3007_HW_ROTATION
 
 config NV3007_INIT_F9
 	bool "Send F1=0Eh and F9=17h separately (LVGL / Arduino_GFX init)"
+	default y
 	help
 	  The EastRising demo writes F1 0E followed by a bare 17h with the F9
 	  command commented out, so the 17h lands as a second F1 parameter.
