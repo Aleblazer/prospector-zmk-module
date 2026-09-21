@@ -499,17 +499,31 @@ static int nv3007_apply_orientation(const struct device *dev,
 		return -ENOTSUP;
 	}
 
-	col_margin = (madctl & NV3007_MADCTL_MX)
-			     ? (config->gram_width - config->width - config->x_offset)
-			     : config->x_offset;
-	row_margin = (madctl & NV3007_MADCTL_MY)
-			     ? (config->gram_height - config->height - config->y_offset)
-			     : config->y_offset;
-
+	/*
+	 * The visible glass is inset in the frame memory, so a mirrored axis
+	 * counts its margin from the other side. MV exchanges the two address
+	 * counters, which also exchanges which mirror bit governs which axis:
+	 * with MV set, CASET walks panel rows (mirrored by MX) and RASET walks
+	 * panel columns (mirrored by MY). That is what makes MADCTL A0h need a
+	 * 14 pixel RASET offset on a 142-of-168 column panel, matching the
+	 * esp_lcd_nv3007 reference driver.
+	 */
 	if (madctl & NV3007_MADCTL_MV) {
+		col_margin = (madctl & NV3007_MADCTL_MY)
+				     ? (config->gram_width - config->width - config->x_offset)
+				     : config->x_offset;
+		row_margin = (madctl & NV3007_MADCTL_MX)
+				     ? (config->gram_height - config->height - config->y_offset)
+				     : config->y_offset;
 		data->caset_offset = row_margin;
 		data->raset_offset = col_margin;
 	} else {
+		col_margin = (madctl & NV3007_MADCTL_MX)
+				     ? (config->gram_width - config->width - config->x_offset)
+				     : config->x_offset;
+		row_margin = (madctl & NV3007_MADCTL_MY)
+				     ? (config->gram_height - config->height - config->y_offset)
+				     : config->y_offset;
 		data->caset_offset = col_margin;
 		data->raset_offset = row_margin;
 	}
@@ -562,15 +576,21 @@ static enum display_orientation nv3007_rotation_to_orientation(uint16_t rotation
  * the window offsets); a black square inside the red bar (proves inversion).
  * Pixels are RGB565, high byte first on the wire.
  */
+/*
+ * Not on the stack: driver init runs on the main thread during POST_KERNEL,
+ * where a kilobyte of locals is enough to overflow CONFIG_MAIN_STACK_SIZE.
+ */
+static uint8_t nv3007_test_line[428 * NV3007_PIXEL_SIZE];
+
 static int nv3007_paint_test_pattern(const struct device *dev)
 {
 	struct display_capabilities caps;
 	struct display_buffer_descriptor desc;
-	uint8_t line[2 * 428];
+	uint8_t *line = nv3007_test_line;
 	int ret;
 
 	nv3007_get_capabilities(dev, &caps);
-	if (caps.x_resolution * 2 > sizeof(line)) {
+	if (caps.x_resolution * NV3007_PIXEL_SIZE > sizeof(nv3007_test_line)) {
 		return -ENOMEM;
 	}
 
@@ -648,9 +668,16 @@ static int nv3007_init(const struct device *dev)
 		return ret;
 	}
 
-	ret = nv3007_send_init_seq(dev);
+	/*
+	 * Order matters, and it is the order esp_lcd_nv3007 uses for this
+	 * panel: leave sleep first, then set the access and pixel format, then
+	 * program the vendor register page. The panel powers up asleep with its
+	 * analog blocks off, and writes to the vendor page do not stick until
+	 * it is awake, which looks exactly like a dead SPI link.
+	 */
+	ret = nv3007_exit_sleep(dev);
 	if (ret < 0) {
-		LOG_ERR("Failed to init display (%d)", ret);
+		LOG_ERR("Failed to exit sleep mode (%d)", ret);
 		return ret;
 	}
 
@@ -660,19 +687,6 @@ static int nv3007_init(const struct device *dev)
 		return ret;
 	}
 
-	ret = nv3007_transmit(dev, config->inversion_on ? NV3007_CMD_INVON : NV3007_CMD_INVOFF,
-			      NULL, 0);
-	if (ret < 0) {
-		return ret;
-	}
-
-	ret = nv3007_exit_sleep(dev);
-	if (ret < 0) {
-		LOG_ERR("Failed to exit sleep mode (%d)", ret);
-		return ret;
-	}
-
-	/* Re-assert the pixel format after Sleep Out; harmless if it already took */
 	{
 		uint8_t colmod = NV3007_COLMOD_16BPP;
 
@@ -680,6 +694,25 @@ static int nv3007_init(const struct device *dev)
 		if (ret < 0) {
 			return ret;
 		}
+	}
+
+	ret = nv3007_send_init_seq(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to init display (%d)", ret);
+		return ret;
+	}
+
+	/* The vendor sequence ends with its own Sleep Out; keep that timing */
+	ret = nv3007_exit_sleep(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to exit sleep mode (%d)", ret);
+		return ret;
+	}
+
+	ret = nv3007_transmit(dev, config->inversion_on ? NV3007_CMD_INVON : NV3007_CMD_INVOFF,
+			      NULL, 0);
+	if (ret < 0) {
+		return ret;
 	}
 
 #ifdef CONFIG_NV3007_INIT_TEST_PATTERN

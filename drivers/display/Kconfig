@@ -26,16 +26,17 @@ config NV3007_RESET_RECOVERY_MS
 
 config NV3007_SLEEP_OUT_DELAY_MS
 	int "Delay after Sleep Out before Display On (ms)"
-	default 120
+	default 220
 
 config NV3007_HW_ROTATION
 	bool "Use the MADCTL row/column exchange bit for 90/270 degree orientations"
+	default y
 	help
-	  By default the driver keeps the controller in its native portrait
-	  addressing (the only mode the panel vendor's demo code exercises) and
-	  transposes pixels in software for the landscape orientations. Enable
-	  this to use the MADCTL MV bit instead, which is cheaper but unverified
-	  on the NV3007.
+	  Landscape orientations set the MADCTL MV bit so the controller walks
+	  the frame memory transposed. This is what the esp_lcd_nv3007 driver
+	  does for this panel (MADCTL A0h with a 14 pixel row offset), so it is
+	  the default. Disable to keep the controller in portrait addressing and
+	  transpose pixels in the driver instead, which costs a copy per line.
 
 config NV3007_INIT_F9
 	bool "Send F9=17h (LVGL / Arduino_GFX init) instead of the vendor's stray byte"
