@@ -112,6 +112,13 @@ CONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n
 CONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80
 ```
 
+### Bring-up
+
+| Name | Description | Default |
+| ---- | ----------- | ------- |
+| `CONFIG_PROSPECTOR_DEMO_WPM` | Drive the WPM meter from a synthetic rise and fall, ignoring real typing, so the panel can be judged in motion with nothing paired | n |
+| `CONFIG_PROSPECTOR_DEMO_WPM_PERIOD_MS` | One full rise and fall | 6000 |
+
 ### General
 | Name | Description | Default |
 | ---- | ----------- | ------- |

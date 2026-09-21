@@ -83,3 +83,20 @@ config PROSPECTOR_LAYER_NAME_UPPERCASE
     default y
     help
       When enabled, layer names will be converted to uppercase for display.
+
+config PROSPECTOR_DEMO_WPM
+    bool "Animate the WPM meter with synthetic values"
+    default n
+    help
+      Drive the WPM meter from a built-in triangle wave instead of real
+      typing, so the panel can be judged in motion with nothing paired to
+      the dongle. Real WPM events are ignored while this is on. For bring-up
+      and photography, not for normal use.
+
+config PROSPECTOR_DEMO_WPM_PERIOD_MS
+    int "Seconds per full rise and fall, in milliseconds"
+    default 6000
+    range 1000 60000
+    depends on PROSPECTOR_DEMO_WPM
+    help
+      One full sweep from zero to the top of the scale and back.

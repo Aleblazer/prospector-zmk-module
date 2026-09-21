@@ -14,6 +14,9 @@
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 static struct k_work_delayable wpm_smooth_work;
+#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+static struct k_work_delayable wpm_demo_work;
+#endif
 
 static float displayed_wpm = 0.0f;
 static float target_wpm = 0.0f;
@@ -111,9 +114,42 @@ static void wpm_smooth_work_handler(struct k_work *work) {
     }
 }
 
+#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+
+/*
+ * Walk target_wpm up and down a triangle so the meter can be judged in
+ * motion with nothing paired to the dongle. Only the target moves here; the
+ * existing smoothing work still does the drawing, and it eases upwards fast
+ * and downwards slowly, so the sweep looks like real typing rather than a
+ * metronome.
+ */
+#define WPM_DEMO_STEP_MS 50
+
+static void wpm_demo_work_handler(struct k_work *work) {
+    static uint32_t elapsed_ms;
+    const uint32_t period = CONFIG_PROSPECTOR_DEMO_WPM_PERIOD_MS;
+    const uint32_t half = period / 2U;
+    uint32_t pos;
+
+    elapsed_ms = (elapsed_ms + WPM_DEMO_STEP_MS) % period;
+    pos = (elapsed_ms < half) ? elapsed_ms : (period - elapsed_ms);
+
+    target_wpm = (float)pos * (float)WPM_MAX / (float)half;
+
+    k_work_schedule(&wpm_smooth_work, K_NO_WAIT);
+    k_work_schedule(&wpm_demo_work, K_MSEC(WPM_DEMO_STEP_MS));
+}
+
+#endif /* CONFIG_PROSPECTOR_DEMO_WPM */
+
 static void wpm_meter_update_cb(struct wpm_meter_state state) {
+#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+    /* The demo owns the meter; ignore real typing so the two cannot fight */
+    ARG_UNUSED(state);
+#else
     target_wpm = (float)state.wpm;
     k_work_schedule(&wpm_smooth_work, K_NO_WAIT);
+#endif
 }
 
 static struct wpm_meter_state wpm_meter_get_state(const zmk_event_t *eh) {
@@ -212,6 +248,11 @@ int zmk_widget_wpm_meter_init(struct zmk_widget_wpm_meter *widget, lv_obj_t *par
     widget_wpm_meter_layer_init();
 
     k_work_init_delayable(&wpm_smooth_work, wpm_smooth_work_handler);
+
+#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+    k_work_init_delayable(&wpm_demo_work, wpm_demo_work_handler);
+    k_work_schedule(&wpm_demo_work, K_MSEC(500));
+#endif
 
     return 0;
 }
