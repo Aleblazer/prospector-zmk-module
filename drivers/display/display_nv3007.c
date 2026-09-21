@@ -93,10 +93,15 @@ struct nv3007_data {
 };
 
 /*
- * Init table format: <cmd> <nparams> <param>... ; terminated by NV3007_INIT_END.
- * Everything between PAGE_SEL A5 and PAGE_SEL 00 is vendor register space.
+ * Init table format: <cmd> <nparams> <param>... , walked to the end of the
+ * array. Everything between PAGE_SEL A5 and PAGE_SEL 00 is vendor register
+ * space.
+ *
+ * There is deliberately no terminator value. The obvious choice, 0xFF, is
+ * also NV3007_CMD_PAGE_SEL, which opens and closes that vendor space and so
+ * appears twice in the table as a real command. A sentinel loop stopped on
+ * the very first entry and silently sent nothing at all.
  */
-#define NV3007_INIT_END 0xFF
 
 static const uint8_t nv3007_init_seq[] = {
 	NV3007_CMD_PAGE_SEL, 1, 0xA5,
@@ -231,7 +236,6 @@ static const uint8_t nv3007_init_seq[] = {
 	0x46, 1, 0x10,
 	NV3007_CMD_PAGE_SEL, 1, 0x00,
 	NV3007_CMD_COLMOD, 1, NV3007_COLMOD_VAL,
-	NV3007_INIT_END,
 };
 
 static int nv3007_transmit(const struct device *dev, uint8_t cmd, const uint8_t *tx_data,
@@ -245,12 +249,16 @@ static int nv3007_transmit(const struct device *dev, uint8_t cmd, const uint8_t 
 
 static int nv3007_send_init_seq(const struct device *dev)
 {
+	const uint8_t *const end = nv3007_init_seq + ARRAY_SIZE(nv3007_init_seq);
 	const uint8_t *p = nv3007_init_seq;
+	unsigned int count = 0;
 	int ret;
 
-	while (*p != NV3007_INIT_END) {
+	while (p < end) {
 		uint8_t cmd = p[0];
 		uint8_t n = p[1];
+
+		__ASSERT(p + 2 + n <= end, "malformed NV3007 init table");
 
 		ret = nv3007_transmit(dev, cmd, n ? &p[2] : NULL, n);
 		if (ret < 0) {
@@ -258,8 +266,11 @@ static int nv3007_send_init_seq(const struct device *dev)
 			return ret;
 		}
 		p += 2 + n;
+		count++;
 	}
 
+	LOG_INF("Sent %u init commands (%u bytes of table)", count,
+		(unsigned int)ARRAY_SIZE(nv3007_init_seq));
 	return 0;
 }
 
