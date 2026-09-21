@@ -60,12 +60,18 @@ config NV3007_HW_ROTATION
 	  transpose pixels in the driver instead, which costs a copy per line.
 
 config NV3007_INIT_F9
-	bool "Send F9=17h (LVGL / Arduino_GFX init) instead of the vendor's stray byte"
+	bool "Send F1=0Eh and F9=17h separately (LVGL / Arduino_GFX init)"
 	help
 	  The EastRising demo writes F1 0E followed by a bare 17h with the F9
-	  command commented out; LVGL and Arduino_GFX send F9 17 instead. F1
-	  takes a single parameter per the datasheet, so the two differ in
-	  whether F9 is programmed. Enable to use the LVGL variant.
+	  command commented out, so the 17h lands as a second F1 parameter.
+	  LVGL and Arduino_GFX send F9 17 as its own command instead.
+
+	  The datasheet defines F1 as pol_switch[7:0], a single byte that sets
+	  where the polarity signal changes over, and the registers beside it
+	  address the first and last half of the source enable and precharge
+	  signals separately. A wrong changeover point therefore shows up as
+	  banding confined to one half of the panel. Enable this if you see
+	  that.
 
 config NV3007_SPI_MODE3
 	bool "Force SPI mode 3 (CPOL=1, CPHA=1) regardless of devicetree"
