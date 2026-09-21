@@ -745,13 +745,34 @@ static int nv3007_raw_fill(const struct device *dev, uint16_t c0, uint16_t c1, u
 
 static int nv3007_paint_test_pattern(const struct device *dev)
 {
+	/*
+	 * A staircase of small white blocks, each at a different position on
+	 * both axes, so one photograph maps the panel.
+	 *
+	 * Block k sits at columns 20k to 20k+5 and rows 50k to 50k+39, so its
+	 * position across the short axis says which frame memory columns are
+	 * visible, and its position along the long axis says which rows are.
+	 * Any block that is missing, clipped or in the wrong place names the
+	 * coordinate that is wrong. Every block is overfed at three bytes per
+	 * pixel so it fills solid whichever byte ratio the controller uses.
+	 *
+	 * Windows stay inside columns 0 to 145 until the very last block,
+	 * which deliberately touches the top of the frame memory at 160 to
+	 * 167. Coming last, it cannot hide the others: if the earlier blocks
+	 * are visible and everything stops responding afterwards, then asking
+	 * for columns the panel does not implement is what wedges it, which
+	 * is what the previous probe's full width clear appears to have done.
+	 */
+	static const struct {
+		uint16_t c0, c1, r0, r1;
+	} blocks[] = {
+		{0, 5, 0, 39},       {20, 25, 50, 89},    {40, 45, 100, 139},
+		{60, 65, 150, 189},  {80, 85, 200, 239},  {100, 105, 250, 289},
+		{120, 125, 300, 339}, {140, 145, 350, 389}, {160, 167, 400, 427},
+	};
 	const struct nv3007_config *config = dev->config;
 	struct nv3007_data *data = dev->data;
-	uint16_t win_c0 = data->caset_offset;
-	uint16_t win_c1 = data->caset_offset + config->width - 1U;
-	uint16_t gram_c1 = config->gram_width - 1U;
-	uint16_t last_row = config->gram_height - 1U;
-	uint8_t colmod;
+	uint8_t colmod = NV3007_COLMOD_16BPP;
 	int ret;
 
 	ret = nv3007_blanking_off(dev);
@@ -759,31 +780,26 @@ static int nv3007_paint_test_pattern(const struct device *dev)
 		return ret;
 	}
 
-	LOG_INF("probe: panel %ux%u, GRAM %ux%u, x-offset %u, y-offset %u", config->width,
+	LOG_INF("probe: panel %ux%u, GRAM %ux%u, x-offset %u, MADCTL 0x%02x", config->width,
 		config->height, config->gram_width, config->gram_height, config->x_offset,
-		config->y_offset);
-	LOG_INF("probe: MADCTL 0x%02x, window cols %u-%u, GRAM cols 0-%u", data->madctl, win_c0,
-		win_c1, gram_c1);
+		data->madctl);
 
-	/* Clear the whole frame memory, overfed so it clears under any format */
-	colmod = NV3007_COLMOD_16BPP;
 	(void)nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
-	(void)nv3007_raw_fill(dev, 0, gram_c1, 0, last_row, 0x0000, 3U);
 
-	/* A: driver's window, two bytes per pixel */
-	(void)nv3007_raw_fill(dev, win_c0, win_c1, 0, 39, 0xFFFF, 2U);
-	/* B: driver's window, three bytes per pixel */
-	(void)nv3007_raw_fill(dev, win_c0, win_c1, 60, 119, 0xFFFF, 3U);
-	/* C: whole frame memory width, overfed */
-	(void)nv3007_raw_fill(dev, 0, gram_c1, 140, 219, 0xFFFF, 3U);
+	/* Clear only the window the driver believes in; proven to reach the glass */
+	(void)nv3007_raw_fill(dev, data->caset_offset, data->caset_offset + config->width - 1U, 0,
+			      config->gram_height - 1U, 0x0000, 3U);
 
-	LOG_INF("probe: bands painted, holding");
+	for (size_t i = 0; i < ARRAY_SIZE(blocks); i++) {
+		ret = nv3007_raw_fill(dev, blocks[i].c0, blocks[i].c1, blocks[i].r0, blocks[i].r1,
+				      0xFFFF, 3U);
+		LOG_INF("probe: block %u at cols %u-%u rows %u-%u -> %d", (unsigned int)i,
+			blocks[i].c0, blocks[i].c1, blocks[i].r0, blocks[i].r1, ret);
+		k_sleep(K_MSEC(200));
+	}
+
+	LOG_INF("probe: staircase painted, holding");
 	k_sleep(K_MSEC(CONFIG_NV3007_INIT_TEST_PATTERN_HOLD_MS));
-
-	/* Leave the panel in the configured format on a clean black screen */
-	colmod = NV3007_COLMOD_VAL;
-	(void)nv3007_transmit(dev, NV3007_CMD_COLMOD, &colmod, 1);
-	(void)nv3007_raw_fill(dev, 0, gram_c1, 0, last_row, 0x0000, 3U);
 	LOG_INF("probe: done");
 
 	return 0;
