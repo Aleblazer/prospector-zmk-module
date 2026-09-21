@@ -68,12 +68,12 @@ config NV3007_SPI_MODE3
 config NV3007_INIT_TEST_PATTERN
 	bool "Probe the pixel format from the driver after init (debug)"
 	help
-	  After init the driver paints a staircase of small white blocks, each
-	  at a different position on both axes, and holds it for
-	  NV3007_INIT_TEST_PATTERN_HOLD_MS. Where each block lands maps frame
-	  memory coordinates onto the glass, so a missing or displaced block
-	  names the coordinate that is wrong. Positions are logged as they are
-	  painted.
+	  After init the driver paints a ruler of seven wide colour bands
+	  across the short axis, holds it, writes one band outside the safe
+	  column range, then repaints the ruler. The first view shows which
+	  columns reach the glass and at what scale; whether the repaint still
+	  appears shows whether an out of range window wedges the controller.
+	  Each act is held for NV3007_INIT_TEST_PATTERN_HOLD_MS.
 
 config NV3007_INIT_F9
 	bool "Send F9=17h (LVGL / Arduino_GFX init) instead of the vendor's stray byte"
