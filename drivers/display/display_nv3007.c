@@ -1052,9 +1052,17 @@ static DEVICE_API(display, nv3007_api) = {
 #define NV3007_SPI_MODE_FLAGS 0
 #endif
 
+/*
+ * The {0} default keeps the array valid C when the property is absent. Its
+ * length is then reported as 0, so the dummy byte is never read.
+ */
+#define NV3007_EXTRA_INIT_LEN(inst)                                                              \
+	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, extra_init_cmds),                                \
+		    (DT_INST_PROP_LEN(inst, extra_init_cmds)), (0))
+
 #define NV3007_INIT(inst)                                                                        \
 	static const uint8_t nv3007_extra_init_##inst[] =                                        \
-		DT_INST_PROP_OR(inst, extra_init_cmds, {});                                      \
+		DT_INST_PROP_OR(inst, extra_init_cmds, {0});                                     \
                                                                                                  \
 	static const struct nv3007_config nv3007_config_##inst = {                               \
 		.mipi_dbi = DEVICE_DT_GET(DT_INST_PARENT(inst)),                                 \
@@ -1071,7 +1079,7 @@ static DEVICE_API(display, nv3007_api) = {
 		.bgr = DT_INST_PROP(inst, bgr),                                                  \
 		.inversion_on = DT_INST_PROP(inst, inversion_on),                                \
 		.extra_init = nv3007_extra_init_##inst,                                          \
-		.extra_init_len = sizeof(nv3007_extra_init_##inst),                              \
+		.extra_init_len = NV3007_EXTRA_INIT_LEN(inst),                                   \
 	};                                                                                       \
                                                                                                  \
 	static struct nv3007_data nv3007_data_##inst = {                                         \
