@@ -41,7 +41,7 @@ lv_obj_t *zmk_display_status_screen() {
 
     zmk_widget_modifier_indicator_init(&modifier_indicator_widget, screen);
     lv_obj_align(zmk_widget_modifier_indicator_obj(&modifier_indicator_widget), LV_ALIGN_RIGHT_MID,
-                 -8, 50);
+                 -4, 50);
 
     return screen;
 }
