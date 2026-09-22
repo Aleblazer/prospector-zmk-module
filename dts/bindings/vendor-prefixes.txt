@@ -1,1 +1,8 @@
-newvision	Shanghai NewVision Microelectronics Co., Ltd.
+# Out-of-tree vendor prefix, pending in upstream Zephyr.
+#
+# Linux registers "newvision" and uses it for this controller family, for
+# example newvision,nv3051d and the NV3052C panel driver, so the prefix follows
+# that precedent. The description is copied from the Linux registry so that it
+# agrees when Zephyr eventually syncs it; the NV3007 itself is made by Shanghai
+# NewVision Microelectronics. Not to be confused with "nvd", New Vision Display.
+newvision	New Vision Display (Shenzhen) Co., Ltd.

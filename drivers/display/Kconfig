@@ -4,6 +4,7 @@
 menuconfig NV3007
 	bool "NV3007 TFT LCD display driver"
 	default y
+	depends on DISPLAY
 	depends on DT_HAS_NEWVISION_NV3007_ENABLED
 	select MIPI_DBI
 	help
