@@ -61,7 +61,8 @@ static void update_output_widget(struct zmk_widget_output *widget, uint8_t profi
         /* No profile applies over USB, so name the output that is live */
         lv_obj_add_flag(widget->links_label, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(widget->profile_label, "USB");
-        lv_obj_set_style_text_color(widget->profile_label, lv_color_hex(SYM_SENDING),
+        /* White, like Field's other labels, rather than the Bluetooth cyan */
+        lv_obj_set_style_text_color(widget->profile_label, lv_color_hex(NUM_ACTIVE),
                                     LV_PART_MAIN);
         lv_obj_align(widget->profile_label, LV_ALIGN_CENTER, 0, 4);
         lv_obj_invalidate(widget->container);

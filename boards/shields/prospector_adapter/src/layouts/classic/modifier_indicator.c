@@ -18,6 +18,14 @@
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
+/*
+ * Inactive modifiers were 0x101010, about 6% grey, which vanishes on the
+ * NV3007 panel and left only held modifiers visible. 0x404040 matches the
+ * inactive grey Field uses; active stays Classic's cyan.
+ */
+#define MOD_COLOR_ACTIVE 0x00ffe5
+#define MOD_COLOR_INACTIVE 0x404040
+
 #define WIN_ICON_SIZE 28
 #define WIN_SQUARE_SIZE 12
 #define WIN_SQUARE_GAP 4
@@ -47,10 +55,10 @@ static void set_modifier_color(lv_obj_t *obj, lv_color_t color, bool is_win_icon
 
 static void set_modifier_state(lv_obj_t *obj, bool active, bool is_win_icon) {
 #ifdef CONFIG_PROSPECTOR_SHOW_INACTIVE_MODIFIERS
-    lv_color_t color = active ? lv_color_hex(0x00ffe5) : lv_color_hex(0x101010);
+    lv_color_t color = active ? lv_color_hex(MOD_COLOR_ACTIVE) : lv_color_hex(MOD_COLOR_INACTIVE);
     set_modifier_color(obj, color, is_win_icon);
 #else
-    set_modifier_color(obj, lv_color_hex(0x00ffe5), is_win_icon);
+    set_modifier_color(obj, lv_color_hex(MOD_COLOR_ACTIVE), is_win_icon);
     lv_obj_set_style_opa(obj, active ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
 #endif
 }
@@ -68,7 +76,7 @@ static lv_obj_t *create_win_icon(lv_obj_t *parent) {
             lv_obj_set_size(square, WIN_SQUARE_SIZE, WIN_SQUARE_SIZE);
             lv_obj_set_pos(square, col * (WIN_SQUARE_SIZE + WIN_SQUARE_GAP),
                            row * (WIN_SQUARE_SIZE + WIN_SQUARE_GAP));
-            lv_obj_set_style_bg_color(square, lv_color_hex(0x101010), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(square, lv_color_hex(MOD_COLOR_INACTIVE), LV_PART_MAIN);
             lv_obj_set_style_bg_opa(square, LV_OPA_COVER, LV_PART_MAIN);
             lv_obj_set_style_border_width(square, 0, LV_PART_MAIN);
             lv_obj_set_style_radius(square, 2, LV_PART_MAIN);
@@ -174,19 +182,19 @@ int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *wid
             widget->mod_labels[i] = lv_label_create(widget->obj);
             lv_label_set_text(widget->mod_labels[i], modifier_order_get_symbol(i));
             lv_obj_set_style_text_font(widget->mod_labels[i], &Symbols_Semibold_32, LV_PART_MAIN);
-            lv_obj_set_style_text_color(widget->mod_labels[i], lv_color_hex(0x101010), LV_PART_MAIN);
+            lv_obj_set_style_text_color(widget->mod_labels[i], lv_color_hex(MOD_COLOR_INACTIVE), LV_PART_MAIN);
         } else {
             widget->mod_labels[i] = lv_label_create(widget->obj);
             lv_label_set_text(widget->mod_labels[i], modifier_order_get_text(i));
             lv_obj_set_style_text_font(widget->mod_labels[i], &DINishCondensed_SemiBold_22, LV_PART_MAIN);
-            lv_obj_set_style_text_color(widget->mod_labels[i], lv_color_hex(0x101010), LV_PART_MAIN);
+            lv_obj_set_style_text_color(widget->mod_labels[i], lv_color_hex(MOD_COLOR_INACTIVE), LV_PART_MAIN);
         }
     }
 #else
     widget->shift_label = lv_label_create(widget->obj);
     lv_label_set_text(widget->shift_label, SYMBOL_SHIFT_FILLED);
     lv_obj_set_style_text_font(widget->shift_label, &Symbols_Semibold_32, LV_PART_MAIN);
-    lv_obj_set_style_text_color(widget->shift_label, lv_color_hex(0x101010), LV_PART_MAIN);
+    lv_obj_set_style_text_color(widget->shift_label, lv_color_hex(MOD_COLOR_INACTIVE), LV_PART_MAIN);
 #endif
 
     sys_slist_append(&widgets, &widget->node);
