@@ -90,9 +90,10 @@ config PROSPECTOR_DEMO_WPM
       fall instead of real typing, so the panel can be judged in motion with
       nothing paired to the dongle. Operator's meter sweeps continuously;
       Field ramps up and down and then rests at zero for half a period, so
-      its fade after typing stops is visible too. Real WPM events are
-      ignored while this is on. For bring-up and photography, not for
-      normal use.
+      its fade after typing stops is visible too; Classic, which has no WPM
+      animation, steps its layer carousel along every 2.5 seconds instead.
+      Real WPM and layer events are ignored while this is on. For bring-up
+      and photography, not for normal use.
 
 config PROSPECTOR_DEMO_WPM_PERIOD_MS
     int "Seconds per full rise and fall, in milliseconds"

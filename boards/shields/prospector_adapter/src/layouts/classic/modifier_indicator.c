@@ -158,9 +158,10 @@ int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *wid
     lv_obj_set_style_bg_opa(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
-    lv_obj_set_flex_flow(widget->obj, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(widget->obj, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(widget->obj, 8, LV_PART_MAIN);
+    /* One row along the status strip */
+    lv_obj_set_flex_flow(widget->obj, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(widget->obj, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(widget->obj, 4, LV_PART_MAIN);
 
 #ifdef CONFIG_PROSPECTOR_SHOW_MODIFIERS
     bool use_symbols = modifier_order_uses_symbols();
