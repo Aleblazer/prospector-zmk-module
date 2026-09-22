@@ -15,14 +15,20 @@
 #include <symbols.h>
 #include <modifier_order.h>
 
-#define MODIFIER_GRID_COL 7
-#define MODIFIER_GRID_X (LINE_SEGMENTS_GRID_OFFSET + MODIFIER_GRID_COL * LINE_SEGMENTS_SPACING)
+/* The four modifiers stand in the rightmost grid column, one per row */
+#define MODIFIER_GRID_COL (LINE_SEGMENTS_GRID_COLS - 1)
+#define MODIFIER_GRID_X LINE_SEGMENTS_CELL_X(MODIFIER_GRID_COL)
 #define MODIFIER_CENTER_OFFSET_X (MODIFIER_GRID_X - LINE_SEGMENTS_WIDTH / 2)
 
-#define GRID_ROW_Y(row) (LINE_SEGMENTS_GRID_OFFSET + (row) * LINE_SEGMENTS_SPACING)
+#define GRID_ROW_Y(row) LINE_SEGMENTS_CELL_Y(row)
 #define MODIFIER_CENTER_OFFSET_Y(row) (GRID_ROW_Y(row) - LINE_SEGMENTS_HEIGHT / 2)
 
-static const int grid_rows[4] = {2, 3, 4, 5};
+/* The bottom four rows, which on this four-row grid is all of them */
+BUILD_ASSERT(LINE_SEGMENTS_GRID_ROWS >= 4, "the modifier column needs four rows");
+static const int grid_rows[4] = {
+    LINE_SEGMENTS_GRID_ROWS - 4, LINE_SEGMENTS_GRID_ROWS - 3,
+    LINE_SEGMENTS_GRID_ROWS - 2, LINE_SEGMENTS_GRID_ROWS - 1,
+};
 
 #define WIN_ICON_SIZE 24
 #define WIN_SQUARE_SIZE 10

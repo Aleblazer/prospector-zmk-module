@@ -22,7 +22,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define GRID_COLS LINE_SEGMENTS_GRID_COLS
 #define GRID_ROWS LINE_SEGMENTS_GRID_ROWS
 #define SPACING LINE_SEGMENTS_SPACING
-#define GRID_OFFSET LINE_SEGMENTS_GRID_OFFSET
+
+/* Excluded cells are tracked one bit per cell in a uint64_t */
+BUILD_ASSERT(GRID_COLS * GRID_ROWS <= 64, "grid has more cells than the exclusion masks hold");
 
 #define ANIM_BASE_SPEED           0.004f   // Base animation time advancement rate
 #define ANIM_WPM_SPEED_MULTIPLIER 0.072f   // How much WPM affects animation speed
@@ -63,8 +65,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define TIMER_PERIOD_15HZ       66      // Timer period for 15Hz updates (ms)
 #define TIMER_PERIOD_2HZ        500     // Timer period for 2Hz idle wobble (ms)
 
-static const int16_t grid_cx[GRID_COLS] = {18, 52, 86, 120, 154, 188, 222, 256};
-static const int16_t grid_cy[GRID_ROWS] = {18, 52, 86, 120, 154, 188};
+#define grid_cx(col) LINE_SEGMENTS_CELL_X(col)
+#define grid_cy(row) LINE_SEGMENTS_CELL_Y(row)
 
 static inline int angle_to_index(float angle) {
     int deg = (int)(angle * (180.0f / M_PI));
@@ -170,6 +172,10 @@ static float lines_noise(float x, float y, float t) {
 }
 
 static int wpm_event_handler(const zmk_event_t *eh) {
+#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+    /* The demo owns the animation; ignore real typing so the two cannot fight */
+    return ZMK_EV_EVENT_BUBBLE;
+#endif
     const struct zmk_wpm_state_changed *ev = as_zmk_wpm_state_changed(eh);
     if (ev) {
         uint32_t now = k_uptime_get_32();
@@ -201,7 +207,7 @@ static int width_to_columns(int width) {
     // Exclude column if label overlaps grid box (center ± SPACING/2)
     int label_right = 6 + width;
     for (int col = 0; col < GRID_COLS; col++) {
-        int cell_left = grid_cx[col] - SPACING / 2;
+        int cell_left = grid_cx(col) - SPACING / 2;
         if (label_right <= cell_left) {
             return col;
         }
@@ -209,28 +215,25 @@ static int width_to_columns(int width) {
     return GRID_COLS;
 }
 
+/* Exclude the cells in one row that a left-aligned label covers */
+static void exclude_label_row(lv_obj_t *label, int row) {
+    if (!label) {
+        return;
+    }
+    int cols = width_to_columns(lv_obj_get_width(label));
+    for (int col = 0; col < cols; col++) {
+        label_excluded_cells |= (1ULL << (row * GRID_COLS + col));
+    }
+}
+
 static void update_label_excluded_cells(void) {
     label_excluded_cells = 0;
 
     struct zmk_widget_line_segments *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-        // Layer label excludes cells in row 0
-        if (widget->layer_label) {
-            int width = lv_obj_get_width(widget->layer_label);
-            int cols = width_to_columns(width);
-            for (int col = 0; col < cols; col++) {
-                label_excluded_cells |= (1ULL << col);
-            }
-        }
-
-        // Battery label excludes cells in row 5
-        if (widget->battery_label) {
-            int width = lv_obj_get_width(widget->battery_label);
-            int cols = width_to_columns(width);
-            for (int col = 0; col < cols; col++) {
-                label_excluded_cells |= (1ULL << (5 * GRID_COLS + col));
-            }
-        }
+        exclude_label_row(widget->layer_label, LINE_SEGMENTS_LAYER_ROW);
+        exclude_label_row(widget->output, LINE_SEGMENTS_OUTPUT_ROW);
+        exclude_label_row(widget->battery_label, LINE_SEGMENTS_BATTERY_ROW);
         break;
     }
 }
@@ -284,8 +287,8 @@ static void lines_update(void) {
     for (int row = 0; row < GRID_ROWS; row++) {
             for (int col = 0; col < GRID_COLS; col++) {
                 int line_idx = row * GRID_COLS + col;
-                int cx = grid_cx[col];
-                int cy = grid_cy[row];
+                int cx = grid_cx(col);
+                int cy = grid_cy(row);
 
                 float noise_val = lines_noise((float)cx, (float)cy, time);
                 float base_angle = -M_PI_4;
@@ -350,8 +353,8 @@ static void draw_cb(lv_event_t *e) {
                 continue;
             }
 
-            int cx = grid_cx[col];
-            int cy = grid_cy[row];
+            int cx = grid_cx(col);
+            int cy = grid_cy(row);
 
             line_dsc.opa = line_opacity[line_idx];
 
@@ -406,6 +409,44 @@ static void timer_cb(lv_timer_t *timer) {
     }
 }
 
+#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+/*
+ * Feed a synthetic typing rhythm into the animation so the panel can be
+ * judged in motion with nothing paired. Each cycle ramps up to half again
+ * the reference WPM and back down over the configured period, then rests at
+ * zero for half a period so the fade and settle after typing stops is
+ * visible too, which is most of what makes Field look like Field.
+ */
+#define LINE_DEMO_STEP_MS 100
+
+static struct k_work_delayable line_demo_work;
+
+static void line_demo_work_handler(struct k_work *work) {
+    static uint32_t elapsed_ms;
+    const uint32_t period = CONFIG_PROSPECTOR_DEMO_WPM_PERIOD_MS;
+    const uint32_t cycle = period + period / 2U;
+    const uint32_t half = period / 2U;
+    const int peak = CONFIG_PROSPECTOR_ANIMATION_WPM_REFERENCE * 3 / 2;
+    uint32_t pos;
+
+    elapsed_ms = (elapsed_ms + LINE_DEMO_STEP_MS) % cycle;
+
+    if (elapsed_ms < period) {
+        pos = (elapsed_ms < half) ? elapsed_ms : (period - elapsed_ms);
+        current_wpm = (int)((pos * (uint32_t)peak) / half);
+    } else {
+        current_wpm = 0;
+    }
+
+    if (current_wpm > 0) {
+        last_keypress_time = k_uptime_get_32();
+        animation_started = true;
+    }
+
+    k_work_schedule(&line_demo_work, K_MSEC(LINE_DEMO_STEP_MS));
+}
+#endif /* CONFIG_PROSPECTOR_DEMO_WPM */
+
 int zmk_widget_line_segments_init(struct zmk_widget_line_segments *widget, lv_obj_t *parent) {
     init_lut();
 
@@ -419,6 +460,7 @@ int zmk_widget_line_segments_init(struct zmk_widget_line_segments *widget, lv_ob
     widget->obj = lv_obj_create(parent);
     widget->layer_label = NULL;
     widget->battery_label = NULL;
+    widget->output = NULL;
 
     lv_obj_remove_style_all(widget->obj);
     lv_obj_set_style_bg_opa(widget->obj, LV_OPA_TRANSP, 0);
@@ -431,6 +473,11 @@ int zmk_widget_line_segments_init(struct zmk_widget_line_segments *widget, lv_ob
         animation_timer = lv_timer_create(timer_cb, 33, NULL);
     }
 
+#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+    k_work_init_delayable(&line_demo_work, line_demo_work_handler);
+    k_work_schedule(&line_demo_work, K_MSEC(1000));
+#endif
+
     return 0;
 }
 
@@ -440,15 +487,17 @@ lv_obj_t *zmk_widget_line_segments_obj(struct zmk_widget_line_segments *widget) 
 
 void zmk_widget_line_segments_set_labels(struct zmk_widget_line_segments *widget,
                                          lv_obj_t *layer_label,
-                                         lv_obj_t *battery_label) {
+                                         lv_obj_t *battery_label,
+                                         lv_obj_t *output) {
     widget->layer_label = layer_label;
     widget->battery_label = battery_label;
+    widget->output = output;
 
-    if (layer_label) {
-        lv_obj_add_event_cb(layer_label, label_size_changed_cb, LV_EVENT_SIZE_CHANGED, NULL);
-    }
-    if (battery_label) {
-        lv_obj_add_event_cb(battery_label, label_size_changed_cb, LV_EVENT_SIZE_CHANGED, NULL);
+    lv_obj_t *tracked[] = {layer_label, battery_label, output};
+    for (size_t i = 0; i < ARRAY_SIZE(tracked); i++) {
+        if (tracked[i]) {
+            lv_obj_add_event_cb(tracked[i], label_size_changed_cb, LV_EVENT_SIZE_CHANGED, NULL);
+        }
     }
 
     update_label_excluded_cells();

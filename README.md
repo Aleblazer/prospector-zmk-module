@@ -8,9 +8,9 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 > This branch is a work-in-progress and is only compatible with the Zephyr 4.1 version of ZMK (current main).
 >
 > The `feat/nv3007-wide-port` branch targets the 2.79-inch **NV3007** panel
-> (142×428, used as a 428×142 landscape display). Operator is the adapted
-> layout; Field is still pending. Classic and Radii retain their original
-> geometry and are not usable on this display yet.
+> (142×428, used as a 428×142 landscape display). Operator and Field are
+> adapted to it. Classic and Radii retain their original geometry and are
+> not usable on this display yet.
 >
 > The display driver comes from the
 > [zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display)
@@ -125,7 +125,7 @@ CONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80
 
 | Name | Description | Default |
 | ---- | ----------- | ------- |
-| `CONFIG_PROSPECTOR_DEMO_WPM` | Drive the WPM meter from a synthetic rise and fall, ignoring real typing, so the panel can be judged in motion with nothing paired | n |
+| `CONFIG_PROSPECTOR_DEMO_WPM` | Drive the layout's animation from a synthetic typing rhythm, ignoring real typing, so the panel can be judged in motion with nothing paired. Operator and Field | n |
 | `CONFIG_PROSPECTOR_DEMO_WPM_PERIOD_MS` | One full rise and fall | 6000 |
 
 ### General

@@ -83,13 +83,16 @@ config PROSPECTOR_LAYER_NAME_UPPERCASE
       When enabled, layer names will be converted to uppercase for display.
 
 config PROSPECTOR_DEMO_WPM
-    bool "Animate the WPM meter with synthetic values"
+    bool "Animate the status screen with a synthetic typing rhythm"
     default n
     help
-      Drive the WPM meter from a built-in triangle wave instead of real
-      typing, so the panel can be judged in motion with nothing paired to
-      the dongle. Real WPM events are ignored while this is on. For bring-up
-      and photography, not for normal use.
+      Drive the layout's WPM-dependent animation from a built-in rise and
+      fall instead of real typing, so the panel can be judged in motion with
+      nothing paired to the dongle. Operator's meter sweeps continuously;
+      Field ramps up and down and then rests at zero for half a period, so
+      its fade after typing stops is visible too. Real WPM events are
+      ignored while this is on. For bring-up and photography, not for
+      normal use.
 
 config PROSPECTOR_DEMO_WPM_PERIOD_MS
     int "Seconds per full rise and fall, in milliseconds"
