@@ -8,11 +8,19 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 > This branch is a work-in-progress and is only compatible with the Zephyr 4.1 version of ZMK (current main).
 >
 > The `feat/nv3007-wide-port` branch targets the 2.79-inch **NV3007** panel
-> (142×428, used as a 428×142 landscape display). The NV3007 display driver
-> is vendored under `drivers/display` (canonical copy:
-> [zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display)). Operator is the adapted layout; Field is still
-> pending. Classic and Radii retain their original geometry and are not usable
-> on this display yet.
+> (142×428, used as a 428×142 landscape display). Operator is the adapted
+> layout; Field is still pending. Classic and Radii retain their original
+> geometry and are not usable on this display yet.
+>
+> The NV3007 display driver is vendored under `drivers/display` and
+> `dts/bindings`. The canonical copy, with wiring, devicetree properties,
+> tuning notes and hardware test status, is
+> [zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display).
+> Those vendored files are Apache 2.0, as they derive from Zephyr's ST7789V
+> driver; each carries its own SPDX header, and the rest of this module stays
+> MIT.
+>
+> Verified on a XIAO BLE at up to 32 MHz. The Pro Micro wiring is untested.
 
 The wide-screen branch supports both the original Xiao controller and
 nice!nano v2-compatible Pro Micro footprint nRF52840 controllers. The NV3007
