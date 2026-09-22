@@ -22,6 +22,12 @@ config PROSPECTOR_STATUS_SCREEN_OPERATOR
     help
         Technical and information dense layout
 
+config PROSPECTOR_STATUS_SCREEN_GOSSIP
+    bool "Gossip layout"
+    help
+        Every key you type flies out of the screen toward you along a
+        random path, with only a small layer name and battery bars
+
 endchoice
 
 config PROSPECTOR_ROTATE_DISPLAY_180
@@ -93,6 +99,7 @@ config PROSPECTOR_DEMO_WPM
       its fade after typing stops is visible too; Classic and Radii, which
       have no WPM animation, step their layer display along every 2.5
       seconds instead, and Radii fills its battery rings with sample levels.
+      Gossip types a sample sentence on a loop and fills its battery bars.
       Real WPM and layer events are ignored while this is on. For bring-up
       and photography, not for normal use.
 

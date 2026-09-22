@@ -8,10 +8,11 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 > This branch is a work-in-progress and is only compatible with the Zephyr 4.1 version of ZMK (current main).
 >
 > The `feat/nv3007-wide-port` branch targets the 2.79-inch **NV3007** panel
-> (142×428, used as a 428×142 landscape display). All four layouts are
-> adapted to it: Classic's layer roller becomes a horizontal carousel, and
-> Radii puts its layer wheel beside the name and prints each battery's
-> charge inside its ring.
+> (142×428, used as a 428×142 landscape display). All four original
+> layouts are adapted to it: Classic's layer roller becomes a horizontal
+> carousel, and Radii puts its layer wheel beside the name and prints each
+> battery's charge inside its ring. A fifth layout, Gossip, is new on this
+> branch: every key you type flies out of the screen toward you.
 >
 > The display driver comes from the
 > [zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display)
@@ -94,7 +95,15 @@ Classic is used by default. To choose a different screen, add one of the followi
 CONFIG_PROSPECTOR_STATUS_SCREEN_RADII=y
 CONFIG_PROSPECTOR_STATUS_SCREEN_FIELD=y
 CONFIG_PROSPECTOR_STATUS_SCREEN_OPERATOR=y
+CONFIG_PROSPECTOR_STATUS_SCREEN_GOSSIP=y
 ```
+
+Gossip shows almost nothing until you type. Each letter, number or symbol
+you press appears at a random spot and flies toward you along a random
+curved path, growing and fading as it passes. The only fixed elements are
+the layer name in the bottom-left corner and one small battery bar per
+peripheral in the bottom-right, amber below 20%. Its fonts are generated
+from [DINish](https://github.com/playbeing/dinish) (OFL-1.1).
 
 ## Usage
 
@@ -126,7 +135,7 @@ CONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80
 
 | Name | Description | Default |
 | ---- | ----------- | ------- |
-| `CONFIG_PROSPECTOR_DEMO_WPM` | Animate the layout with nothing paired, for bring-up and photos: a synthetic typing rhythm for Operator and Field, and a layer change every 2.5 s for Classic and Radii (plus sample battery levels on Radii). Real WPM and layer events are ignored while it is on | n |
+| `CONFIG_PROSPECTOR_DEMO_WPM` | Animate the layout with nothing paired, for bring-up and photos: a synthetic typing rhythm for Operator and Field, a layer change every 2.5 s for Classic and Radii (plus sample battery levels on Radii), and a sample sentence typed on a loop for Gossip. Real WPM and layer events are ignored while it is on | n |
 | `CONFIG_PROSPECTOR_DEMO_WPM_PERIOD_MS` | One full rise and fall | 6000 |
 
 ### General

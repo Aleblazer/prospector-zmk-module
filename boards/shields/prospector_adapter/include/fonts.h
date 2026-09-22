@@ -49,4 +49,16 @@ LV_FONT_DECLARE(FR_Medium_22);
 LV_FONT_DECLARE(FR_Medium_32);
 LV_FONT_DECLARE(DINish_Medium_24);
 
+#elif defined(CONFIG_PROSPECTOR_STATUS_SCREEN_GOSSIP)
+
+/* Flying keys, one per perspective step, and the layer name */
+LV_FONT_DECLARE(DINish_SemiBold_18);
+LV_FONT_DECLARE(DINish_SemiBold_24);
+LV_FONT_DECLARE(DINish_SemiBold_32);
+LV_FONT_DECLARE(DINish_SemiBold_42);
+LV_FONT_DECLARE(DINish_SemiBold_56);
+LV_FONT_DECLARE(DINish_SemiBold_74);
+LV_FONT_DECLARE(DINish_SemiBold_96);
+LV_FONT_DECLARE(DINishCondensed_SemiBold_14);
+
 #endif
