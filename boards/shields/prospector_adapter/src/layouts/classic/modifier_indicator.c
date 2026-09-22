@@ -19,9 +19,9 @@
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 /*
- * Inactive modifiers were 0x101010, about 6% grey, which vanishes on the
- * NV3007 panel and left only held modifiers visible. 0x404040 matches the
- * inactive grey Field uses; active stays Classic's cyan.
+ * Inactive modifiers were 0x101010, about 6% grey, which barely registers on
+ * the NV3007 panel. 0x404040 matches the inactive grey Field uses; active
+ * stays Classic's cyan.
  */
 #define MOD_COLOR_ACTIVE 0x00ffe5
 #define MOD_COLOR_INACTIVE 0x404040
@@ -166,9 +166,14 @@ int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *wid
     lv_obj_set_style_bg_opa(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
-    /* One row along the status strip */
+    /*
+     * One row along the status strip. START, not END: this container is
+     * content-sized, and END packs the children against a width that never
+     * grows, clipping all but the last one. The status screen right-aligns
+     * the container itself.
+     */
     lv_obj_set_flex_flow(widget->obj, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(widget->obj, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(widget->obj, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(widget->obj, 4, LV_PART_MAIN);
 
 #ifdef CONFIG_PROSPECTOR_SHOW_MODIFIERS
