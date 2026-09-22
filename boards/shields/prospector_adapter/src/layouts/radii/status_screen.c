@@ -16,8 +16,21 @@ lv_obj_t *zmk_display_status_screen() {
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(screen, 255, LV_PART_MAIN);
 
+    /*
+     * 428x142 NV3007 canvas, tiled edge to edge like the original:
+     *
+     *   +-----------------+--------------------+
+     *   | layer 240x142   | modifiers 188x80   |
+     *   | wheel + name    +--------+-----------+
+     *   |                 | output | battery   |
+     *   |                 | 64x62  | 124x62    |
+     *   +-----------------+--------+-----------+
+     *
+     * The output has its own cell, so the modifier tile no longer shrinks
+     * to make room for it.
+     */
     lv_obj_t *left_panel = lv_obj_create(screen);
-    lv_obj_set_size(left_panel, 172, 240);
+    lv_obj_set_size(left_panel, 240, 142);
     lv_obj_set_pos(left_panel, 0, 0);
     lv_obj_set_style_bg_color(left_panel, lv_color_hex(DISPLAY_COLOR_LEFT_PANEL_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(left_panel, 255, LV_PART_MAIN);
@@ -26,16 +39,16 @@ lv_obj_t *zmk_display_status_screen() {
     lv_obj_set_style_pad_all(left_panel, 0, LV_PART_MAIN);
 
     zmk_widget_layer_indicator_init(&layer_indicator_widget, left_panel);
-    lv_obj_set_pos(zmk_widget_layer_indicator_obj(&layer_indicator_widget), 14, 20);
-
-    zmk_widget_output_init(&output_widget, screen);
-    lv_obj_align(zmk_widget_output_obj(&output_widget), LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_align(zmk_widget_layer_indicator_obj(&layer_indicator_widget), LV_ALIGN_LEFT_MID, 16, 0);
 
     zmk_widget_modifier_indicator_init(&modifier_indicator_widget, screen);
-    lv_obj_align(zmk_widget_modifier_indicator_obj(&modifier_indicator_widget), LV_ALIGN_BOTTOM_RIGHT, 0, -62);
+    lv_obj_set_pos(zmk_widget_modifier_indicator_obj(&modifier_indicator_widget), 240, 0);
+
+    zmk_widget_output_init(&output_widget, screen);
+    lv_obj_set_pos(zmk_widget_output_obj(&output_widget), 240, 80);
 
     zmk_widget_battery_circles_init(&battery_circles_widget, screen);
-    lv_obj_set_pos(zmk_widget_battery_circles_obj(&battery_circles_widget), 172, 178);
+    lv_obj_set_pos(zmk_widget_battery_circles_obj(&battery_circles_widget), 304, 80);
 
     return screen;
 }

@@ -93,29 +93,6 @@ static void modifier_indicator_update_cb(struct modifier_indicator_state state) 
     }
 }
 
-#define PANEL_HEIGHT_FULL 178
-#define PANEL_HEIGHT_COMPACT 148
-
-static void animate_panel_resize(lv_obj_t *obj, int32_t target_height) {
-    int32_t current_height = lv_obj_get_height(obj);
-
-    lv_anim_t anim;
-    lv_anim_init(&anim);
-    lv_anim_set_var(&anim, obj);
-    lv_anim_set_values(&anim, current_height, target_height);
-    lv_anim_set_time(&anim, 150);
-    lv_anim_set_exec_cb(&anim, (lv_anim_exec_xcb_t)lv_obj_set_height);
-    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
-    lv_anim_start(&anim);
-}
-
-void zmk_widget_modifier_indicator_set_compact(bool compact) {
-    struct zmk_widget_modifier_indicator *widget;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-        animate_panel_resize(widget->obj, compact ? PANEL_HEIGHT_COMPACT : PANEL_HEIGHT_FULL);
-    }
-}
-
 static struct modifier_indicator_state modifier_indicator_get_state(const zmk_event_t *eh) {
     zmk_mod_flags_t mods = zmk_hid_get_explicit_mods();
 
@@ -151,18 +128,22 @@ ZMK_SUBSCRIPTION(widget_modifier_indicator, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(widget_modifier_indicator, zmk_caps_word_state_changed);
 #endif
 
-static const int32_t mod_positions[4][2] = {
-    {14, 27}, {50, 27}, {14, 64}, {50, 64}
-};
-
 int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 108, 178);
+    /*
+     * One row of four across a fixed-size tile. SPACE_EVENLY spreads the
+     * symbols or the wider text labels alike; the tile is not content-sized,
+     * so nothing is clipped.
+     */
+    lv_obj_set_size(widget->obj, 188, 80);
     lv_obj_set_style_bg_color(widget->obj, lv_color_hex(DISPLAY_COLOR_MOD_PANEL_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(widget->obj, 255, LV_PART_MAIN);
     lv_obj_set_style_radius(widget->obj, 24, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
+    lv_obj_set_flex_flow(widget->obj, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(widget->obj, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
 
     bool use_symbols = modifier_order_uses_symbols();
     bool is_windows = modifier_order_is_windows();
@@ -181,7 +162,6 @@ int zmk_widget_modifier_indicator_init(struct zmk_widget_modifier_indicator *wid
             lv_obj_set_style_text_font(widget->mod_labels[i], &DINishCondensed_SemiBold_22, LV_PART_MAIN);
             lv_obj_set_style_text_color(widget->mod_labels[i], lv_color_hex(DISPLAY_COLOR_MOD_INACTIVE), LV_PART_MAIN);
         }
-        lv_obj_set_pos(widget->mod_labels[i], mod_positions[i][0], mod_positions[i][1]);
     }
 
     sys_slist_append(&widgets, &widget->node);

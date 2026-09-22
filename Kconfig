@@ -90,8 +90,9 @@ config PROSPECTOR_DEMO_WPM
       fall instead of real typing, so the panel can be judged in motion with
       nothing paired to the dongle. Operator's meter sweeps continuously;
       Field ramps up and down and then rests at zero for half a period, so
-      its fade after typing stops is visible too; Classic, which has no WPM
-      animation, steps its layer carousel along every 2.5 seconds instead.
+      its fade after typing stops is visible too; Classic and Radii, which
+      have no WPM animation, step their layer display along every 2.5
+      seconds instead, and Radii fills its battery rings with sample levels.
       Real WPM and layer events are ignored while this is on. For bring-up
       and photography, not for normal use.
 

@@ -1,5 +1,4 @@
 #include "output.h"
-#include "modifier_indicator.h"
 
 #include <zmk/display.h>
 #include <zmk/events/endpoint_changed.h>
@@ -11,28 +10,22 @@
 #include <fonts.h>
 #include <symbols.h>
 
-static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
+/*
+ * Output indicator: the Bluetooth symbol and profile number while on BLE, or
+ * "USB" while the dongle is sending over USB. It has its own cell on the wide
+ * screen, so it no longer squeezes the modifier tile or times out.
+ */
 
-#define PROFILE_DISPLAY_TIMEOUT K_SECONDS(3)
+static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 #define NUM_ACTIVE       0xffffff
 #define NUM_INACTIVE     0xa0a0a0
 #define SYM_SENDING      0x00ffff
-#define SYM_CONNECTED    0x63c0c0
 #define SYM_SEARCHING    0xd0d0d0
 #define SYM_UNPAIRED     0x454545
 
-static void profile_display_timeout_handler(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(profile_display_timeout_work, profile_display_timeout_handler);
-
 static uint8_t active_profile_index = 0;
 static enum zmk_transport active_transport = ZMK_TRANSPORT_USB;
-
-static void profile_display_timeout_handler(struct k_work *work) {
-    if (active_transport != ZMK_TRANSPORT_BLE) {
-        zmk_widget_modifier_indicator_set_compact(false);
-    }
-}
 
 static void set_symbol_opa(void *obj, int32_t opa) {
     lv_obj_set_style_opa(obj, opa, LV_PART_MAIN);
@@ -59,29 +52,35 @@ static void stop_breathing_anim(lv_obj_t *obj) {
 }
 
 static void update_output_widget(struct zmk_widget_output *widget, uint8_t profile_index) {
+    stop_breathing_anim(widget->links_label);
+
+    if (active_transport != ZMK_TRANSPORT_BLE) {
+        /* No profile applies over USB, so name the output that is live */
+        lv_obj_add_flag(widget->links_label, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(widget->profile_label, "USB");
+        lv_obj_set_style_text_color(widget->profile_label, lv_color_hex(NUM_ACTIVE), LV_PART_MAIN);
+        lv_obj_align(widget->profile_label, LV_ALIGN_CENTER, 0, 1);
+        lv_obj_invalidate(widget->container);
+        return;
+    }
+
+    lv_obj_remove_flag(widget->links_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_align(widget->profile_label, LV_ALIGN_LEFT_MID, 36, 1);
+
     char profile_text[4];
     snprintf(profile_text, sizeof(profile_text), "%d", profile_index);
     lv_label_set_text(widget->profile_label, profile_text);
 
     bool is_connected = zmk_ble_profile_is_connected(profile_index);
     bool is_open = zmk_ble_profile_is_open(profile_index);
-    bool is_ble_active = (active_transport == ZMK_TRANSPORT_BLE);
 
     lv_label_set_text(widget->links_label, SYMBOL_WAVES_UP);
-    stop_breathing_anim(widget->links_label);
 
     if (is_connected) {
-        if (is_ble_active) {
-            lv_obj_set_style_text_font(widget->links_label, &Symbols_Bold_26, LV_PART_MAIN);
-            lv_obj_set_style_text_color(widget->links_label, lv_color_hex(SYM_SENDING), LV_PART_MAIN);
-            lv_obj_set_style_text_color(widget->profile_label, lv_color_hex(NUM_ACTIVE), LV_PART_MAIN);
-            lv_obj_set_style_translate_y(widget->links_label, 2, LV_PART_MAIN);
-        } else {
-            lv_obj_set_style_text_font(widget->links_label, &Symbols_Regular_28, LV_PART_MAIN);
-            lv_obj_set_style_text_color(widget->links_label, lv_color_hex(SYM_CONNECTED), LV_PART_MAIN);
-            lv_obj_set_style_text_color(widget->profile_label, lv_color_hex(NUM_INACTIVE), LV_PART_MAIN);
-            lv_obj_set_style_translate_y(widget->links_label, 0, LV_PART_MAIN);
-        }
+        lv_obj_set_style_text_font(widget->links_label, &Symbols_Bold_26, LV_PART_MAIN);
+        lv_obj_set_style_text_color(widget->links_label, lv_color_hex(SYM_SENDING), LV_PART_MAIN);
+        lv_obj_set_style_text_color(widget->profile_label, lv_color_hex(NUM_ACTIVE), LV_PART_MAIN);
+        lv_obj_set_style_translate_y(widget->links_label, 2, LV_PART_MAIN);
     } else {
         lv_obj_set_style_text_font(widget->links_label, &Symbols_Regular_28, LV_PART_MAIN);
         lv_obj_set_style_translate_y(widget->links_label, 0, LV_PART_MAIN);
@@ -100,16 +99,7 @@ static void update_output_widget(struct zmk_widget_output *widget, uint8_t profi
 static int endpoint_changed_listener(const zmk_event_t *eh) {
     const struct zmk_endpoint_changed *event = as_zmk_endpoint_changed(eh);
     if (event) {
-        struct zmk_endpoint_instance selected = zmk_endpoint_get_selected();
-        active_transport = selected.transport;
-
-        if (active_transport == ZMK_TRANSPORT_BLE) {
-            k_work_cancel_delayable(&profile_display_timeout_work);
-            zmk_widget_modifier_indicator_set_compact(true);
-        } else {
-            zmk_widget_modifier_indicator_set_compact(true);
-            k_work_reschedule(&profile_display_timeout_work, PROFILE_DISPLAY_TIMEOUT);
-        }
+        active_transport = zmk_endpoint_get_selected().transport;
 
         struct zmk_widget_output *widget;
         SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
@@ -123,9 +113,6 @@ static int ble_active_profile_changed_listener(const zmk_event_t *eh) {
     const struct zmk_ble_active_profile_changed *event = as_zmk_ble_active_profile_changed(eh);
     if (event) {
         active_profile_index = event->index;
-
-        zmk_widget_modifier_indicator_set_compact(true);
-        k_work_reschedule(&profile_display_timeout_work, PROFILE_DISPLAY_TIMEOUT);
 
         struct zmk_widget_output *widget;
         SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
@@ -143,9 +130,8 @@ ZMK_SUBSCRIPTION(widget_output_profile, zmk_ble_active_profile_changed);
 
 int zmk_widget_output_init(struct zmk_widget_output *widget, lv_obj_t *parent) {
     widget->container = lv_obj_create(parent);
-    lv_obj_set_size(widget->container, 108, 30);
-    // lv_obj_set_style_bg_color(widget->container, lv_color_hex(0x202020), LV_PART_MAIN);
-    // lv_obj_set_style_bg_opa(widget->container, 255, LV_PART_MAIN);
+    lv_obj_set_size(widget->container, 64, 62);
+    lv_obj_set_style_bg_opa(widget->container, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->container, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->container, 0, LV_PART_MAIN);
 
@@ -154,23 +140,16 @@ int zmk_widget_output_init(struct zmk_widget_output *widget, lv_obj_t *parent) {
     lv_obj_set_style_text_font(widget->links_label, &Symbols_Regular_28, LV_PART_MAIN);
     lv_obj_set_style_text_color(widget->links_label, lv_color_hex(NUM_INACTIVE), LV_PART_MAIN);
     lv_obj_set_style_text_align(widget->links_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(widget->links_label, 19, -1);
+    lv_obj_align(widget->links_label, LV_ALIGN_LEFT_MID, 4, -1);
 
     widget->profile_label = lv_label_create(widget->container);
-    lv_obj_set_size(widget->profile_label, 30, 30);
     lv_obj_set_style_text_font(widget->profile_label, &Symbols_Semibold_28, LV_PART_MAIN);
     lv_obj_set_style_text_color(widget->profile_label, lv_color_hex(NUM_INACTIVE), LV_PART_MAIN);
-    lv_obj_set_style_text_align(widget->profile_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(widget->profile_label, 54, 1);
+    lv_obj_align(widget->profile_label, LV_ALIGN_LEFT_MID, 36, 1);
 
     if (sys_slist_is_empty(&widgets)) {
         active_profile_index = zmk_ble_active_profile_index();
-        struct zmk_endpoint_instance selected = zmk_endpoint_get_selected();
-        active_transport = selected.transport;
-
-        if (active_transport == ZMK_TRANSPORT_BLE) {
-            zmk_widget_modifier_indicator_set_compact(true);
-        }
+        active_transport = zmk_endpoint_get_selected().transport;
     }
 
     update_output_widget(widget, active_profile_index);

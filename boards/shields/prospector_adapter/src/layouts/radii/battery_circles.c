@@ -16,8 +16,21 @@ static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 #define PERIPHERAL_COUNT ZMK_SPLIT_BLE_PERIPHERAL_COUNT
 #endif
 
+#define MAX_DISPLAYED (PERIPHERAL_COUNT > 3 ? 3 : PERIPHERAL_COUNT)
+
+/*
+ * 124x62 tile. Each peripheral gets a ring with its charge printed inside:
+ * 44 px rings for one or two peripherals, 36 px for three, where the
+ * condensed 20 px digits still clear the ring's inside.
+ */
+#define TILE_WIDTH 124
+#define TILE_HEIGHT 62
+#define ARC_SIZE (MAX_DISPLAYED > 2 ? 36 : 44)
+#define ARC_WIDTH (MAX_DISPLAYED > 2 ? 4 : 6)
+#define ARC_GAP (MAX_DISPLAYED > 2 ? 3 : 12)
+
 static lv_obj_t *peripheral_arcs[PERIPHERAL_COUNT];
-static lv_obj_t *peripheral_label;
+static lv_obj_t *peripheral_labels[PERIPHERAL_COUNT];
 
 struct battery_update_state {
     uint8_t source;
@@ -30,8 +43,7 @@ struct connection_update_state {
 };
 
 static void update_peripheral_display(uint8_t source, uint8_t level, bool connected) {
-    int max_displayed = PERIPHERAL_COUNT > 3 ? 3 : PERIPHERAL_COUNT;
-    if (source >= max_displayed) {
+    if (source >= MAX_DISPLAYED) {
         return;
     }
 
@@ -45,12 +57,11 @@ static void update_peripheral_display(uint8_t source, uint8_t level, bool connec
         lv_color_hex(connected ? DISPLAY_COLOR_ARC_INDICATOR : DISPLAY_COLOR_ARC_BG),
         LV_PART_INDICATOR);
 
-    if (PERIPHERAL_COUNT == 1 && peripheral_label) {
-        if (connected && level > 0) {
-            lv_label_set_text_fmt(peripheral_label, "%d", level);
-        } else {
-            lv_label_set_text(peripheral_label, "");
-        }
+    /* Blank until a level arrives, rather than a misleading 0 */
+    if (connected && level > 0) {
+        lv_label_set_text_fmt(peripheral_labels[source], "%d", level);
+    } else {
+        lv_label_set_text(peripheral_labels[source], "");
     }
 }
 
@@ -58,8 +69,7 @@ static uint8_t peripheral_battery[PERIPHERAL_COUNT];
 static bool peripheral_connected[PERIPHERAL_COUNT];
 
 static void set_battery_level(uint8_t source, uint8_t level) {
-    int max_displayed = PERIPHERAL_COUNT > 3 ? 3 : PERIPHERAL_COUNT;
-    if (source >= max_displayed) {
+    if (source >= MAX_DISPLAYED) {
         return;
     }
     peripheral_battery[source] = level;
@@ -67,8 +77,7 @@ static void set_battery_level(uint8_t source, uint8_t level) {
 }
 
 static void set_connection_status(uint8_t source, bool connected) {
-    int max_displayed = PERIPHERAL_COUNT > 3 ? 3 : PERIPHERAL_COUNT;
-    if (source >= max_displayed) {
+    if (source >= MAX_DISPLAYED) {
         return;
     }
     peripheral_connected[source] = connected;
@@ -161,44 +170,27 @@ static lv_obj_t *create_arc(lv_obj_t *parent, int size, int x, int y, int width)
 
 int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
-    lv_obj_set_size(widget->obj, 108, 62);
+    lv_obj_set_size(widget->obj, TILE_WIDTH, TILE_HEIGHT);
     lv_obj_set_style_bg_color(widget->obj, lv_color_hex(DISPLAY_COLOR_BATTERY_PANEL_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(widget->obj, 255, LV_PART_MAIN);
     lv_obj_set_style_radius(widget->obj, 24, LV_PART_MAIN);
     lv_obj_set_style_border_width(widget->obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(widget->obj, 0, LV_PART_MAIN);
 
-    if (PERIPHERAL_COUNT == 1) {
-        int arc_size = 32;
-        peripheral_arcs[0] = create_arc(widget->obj, arc_size, 17, (62 - arc_size) / 2, 6);
+    const int row_width = MAX_DISPLAYED * ARC_SIZE + (MAX_DISPLAYED - 1) * ARC_GAP;
+    const int left_pad = (TILE_WIDTH - row_width) / 2;
+    const int top = (TILE_HEIGHT - ARC_SIZE) / 2;
 
-        peripheral_label = lv_label_create(widget->obj);
-        lv_label_set_text(peripheral_label, "");
-        lv_obj_set_style_text_font(peripheral_label, &Symbols_Medium_28, LV_PART_MAIN);
-        lv_obj_set_style_text_color(peripheral_label, lv_color_hex(DISPLAY_COLOR_ARC_INDICATOR), LV_PART_MAIN);
-        lv_obj_set_style_text_align(peripheral_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-        lv_obj_align(peripheral_label, LV_ALIGN_RIGHT_MID, -19, -1);
+    for (int i = 0; i < MAX_DISPLAYED; i++) {
+        peripheral_arcs[i] =
+            create_arc(widget->obj, ARC_SIZE, left_pad + i * (ARC_SIZE + ARC_GAP), top, ARC_WIDTH);
 
-    } else if (PERIPHERAL_COUNT == 2) {
-        int arc_size = 30;
-        int left_pad = 19;
-        int arc_gap = 10;
-        int y_center = (62 - arc_size) / 2;
-
-        for (int i = 0; i < 2; i++) {
-            peripheral_arcs[i] = create_arc(widget->obj, arc_size, left_pad + i * (arc_size + arc_gap), y_center, 6);
-        }
-
-    } else {
-        int arc_size = 24;
-        int left_pad = 12;
-        int arc_gap = 5;
-        int y_center = (62 - arc_size) / 2;
-        int max_displayed = PERIPHERAL_COUNT > 3 ? 3 : PERIPHERAL_COUNT;
-
-        for (int i = 0; i < max_displayed; i++) {
-            peripheral_arcs[i] = create_arc(widget->obj, arc_size, left_pad + i * (arc_size + arc_gap), y_center, 4);
-        }
+        peripheral_labels[i] = lv_label_create(peripheral_arcs[i]);
+        lv_label_set_text(peripheral_labels[i], "");
+        lv_obj_set_style_text_font(peripheral_labels[i], &DINishCondensed_SemiBold_20, LV_PART_MAIN);
+        lv_obj_set_style_text_color(peripheral_labels[i], lv_color_hex(DISPLAY_COLOR_ARC_INDICATOR),
+                                    LV_PART_MAIN);
+        lv_obj_align(peripheral_labels[i], LV_ALIGN_CENTER, 0, 1);
     }
 
     widget_battery_circles_battery_init();
@@ -206,6 +198,15 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
 
     widget->initialized = true;
     sys_slist_append(&widgets, &widget->node);
+
+#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+    /* Something to read with nothing paired; real events still replace it */
+    static const uint8_t demo_levels[] = {82, 47, 64};
+    for (int i = 0; i < MAX_DISPLAYED; i++) {
+        set_connection_status(i, true);
+        set_battery_level(i, demo_levels[i]);
+    }
+#endif
 
     return 0;
 }
