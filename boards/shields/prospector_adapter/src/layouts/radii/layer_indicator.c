@@ -24,38 +24,67 @@ struct layer_indicator_state {
     uint8_t index;
 };
 
+/* Half the tick's stroke width, so ticks are 4 px wide with round ends */
+#define WHEEL_TICK_HALF_WIDTH 2.0f
+
 /*
- * The wheel is redrawn as lines at each angle rather than drawn once and
- * turned with lv_image rotation. Resampling a 48 px bitmap of 4 px strokes
- * smeared the ticks into uneven blobs at every angle but zero.
+ * The wheel is shaded pixel by pixel from each pixel's distance to the
+ * nearest tick, treating a tick as a capsule: a segment from the inner to
+ * the outer radius, thickened by the half width. That gives straight,
+ * evenly rounded, antialiased ticks at any angle.
+ *
+ * Two earlier approaches bent them. Turning a bitmap with lv_image rotation
+ * resampled the 4 px strokes into blobs. lv_draw_line widens slanted lines
+ * to an odd width while its round caps stay on the even-width grid, so the
+ * caps sat a pixel off the body and steep ticks looked hooked.
  */
 static void wheel_draw(lv_obj_t *canvas, int32_t angle) {
-    lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_TRANSP);
+    lv_draw_buf_t *buf = lv_canvas_get_draw_buf(canvas);
+    const lv_color_t color = lv_color_hex(DISPLAY_COLOR_LAYER_WHEEL);
+    const float centre = WHEEL_SIZE / 2.0f;
 
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas, &layer);
-
-    lv_draw_line_dsc_t line_dsc;
-    lv_draw_line_dsc_init(&line_dsc);
-    line_dsc.color = lv_color_hex(DISPLAY_COLOR_LAYER_WHEEL);
-    line_dsc.width = 4;
-    line_dsc.opa = LV_OPA_COVER;
-    line_dsc.round_start = 1;
-    line_dsc.round_end = 1;
-
+    /* Unit direction of each tick; angle is in tenths of a degree, tick 0 up at 0 */
+    float ux[ZMK_KEYMAP_LAYERS_LEN];
+    float uy[ZMK_KEYMAP_LAYERS_LEN];
     for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
-        /* angle is in tenths of a degree; tick 0 points up at angle 0 */
         float a = ((float)i * 360.0f / ZMK_KEYMAP_LAYERS_LEN + angle / 10.0f - 90.0f) * (M_PI_F / 180.0f);
-
-        line_dsc.p1.x = WHEEL_CENTER + lroundf(WHEEL_INNER_RADIUS * cosf(a));
-        line_dsc.p1.y = WHEEL_CENTER + lroundf(WHEEL_INNER_RADIUS * sinf(a));
-        line_dsc.p2.x = WHEEL_CENTER + lroundf(WHEEL_OUTER_RADIUS * cosf(a));
-        line_dsc.p2.y = WHEEL_CENTER + lroundf(WHEEL_OUTER_RADIUS * sinf(a));
-
-        lv_draw_line(&layer, &line_dsc);
+        ux[i] = cosf(a);
+        uy[i] = sinf(a);
     }
 
-    lv_canvas_finish_layer(canvas, &layer);
+    for (int y = 0; y < WHEEL_SIZE; y++) {
+        lv_color32_t *row = (lv_color32_t *)lv_draw_buf_goto_xy(buf, 0, y);
+        for (int x = 0; x < WHEEL_SIZE; x++) {
+            /* Pixel centre, relative to the wheel centre */
+            const float px = x + 0.5f - centre;
+            const float py = y + 0.5f - centre;
+
+            float nearest = WHEEL_SIZE;
+            for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
+                /* Closest point on the tick: project onto it and clamp to its ends */
+                float t = px * ux[i] + py * uy[i];
+                t = t < WHEEL_INNER_RADIUS ? WHEEL_INNER_RADIUS
+                    : t > WHEEL_OUTER_RADIUS ? WHEEL_OUTER_RADIUS : t;
+                const float dx = px - t * ux[i];
+                const float dy = py - t * uy[i];
+                const float d = sqrtf(dx * dx + dy * dy);
+                if (d < nearest) {
+                    nearest = d;
+                }
+            }
+
+            /* Full inside the stroke, fading over the pixel that straddles its edge */
+            float coverage = WHEEL_TICK_HALF_WIDTH + 0.5f - nearest;
+            coverage = coverage < 0.0f ? 0.0f : coverage > 1.0f ? 1.0f : coverage;
+
+            row[x].blue = color.blue;
+            row[x].green = color.green;
+            row[x].red = color.red;
+            row[x].alpha = (uint8_t)(coverage * 255.0f + 0.5f);
+        }
+    }
+
+    lv_image_cache_drop(lv_canvas_get_image(canvas));
     lv_obj_invalidate(canvas);
 }
 
