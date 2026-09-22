@@ -12,13 +12,11 @@ This is a [ZMK module](https://zmk.dev/docs/features/modules) that provides cust
 > layout; Field is still pending. Classic and Radii retain their original
 > geometry and are not usable on this display yet.
 >
-> The NV3007 display driver is vendored under `drivers/display` and
-> `dts/bindings`. The canonical copy, with wiring, devicetree properties,
-> tuning notes and hardware test status, is
-> [zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display).
-> Those vendored files are Apache 2.0, as they derive from Zephyr's ST7789V
-> driver; each carries its own SPDX header, and the rest of this module stays
-> MIT.
+> The display driver comes from the
+> [zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display)
+> module, which must be in your `west.yml` alongside this one (see
+> Installation). Its README covers wiring, devicetree properties, tuning and
+> hardware test status.
 >
 > Verified on a XIAO BLE at up to 32 MHz. The Pro Micro wiring is untested.
 
@@ -69,6 +67,9 @@ manifest:
     - name: prospector-zmk-module                 # <--- and these
       remote: aleblazer                           # <---
       revision: feat/nv3007-wide-port             # <---
+    - name: zmk-nv3007-display                    # <--- NV3007 display driver
+      remote: aleblazer                           # <---
+      revision: main                              # <---
   self:
     path: config
 ```
@@ -150,6 +151,13 @@ CONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80
 | `CONFIG_PROSPECTOR_ANIMATION_FLOW_DECAY_SEC` | Seconds for line directions and length to settle | 300 |
 
 ## Troubleshooting
+
+### Build fails on `newvision,nv3007`
+
+A devicetree error about an unknown `newvision,nv3007` compatible, or
+`DT_HAS_NEWVISION_NV3007_ENABLED` never being set, means the
+[zmk-nv3007-display](https://github.com/Aleblazer/zmk-nv3007-display) module
+is missing from your `config/west.yml`. Add it as shown under Installation.
 
 ### RAM overflow error
 

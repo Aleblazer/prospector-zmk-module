@@ -7,3 +7,5 @@ build:
     dts_root: .
   depends:
     - lvgl
+    # Provides the newvision,nv3007 display driver used by the shield overlays
+    - zmk-nv3007-display

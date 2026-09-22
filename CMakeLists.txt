@@ -2,9 +2,6 @@ zephyr_include_directories(include)
 zephyr_include_directories(${APPLICATION_SOURCE_DIR}/include)
 zephyr_library()
 
-# NV3007 display driver, vendored from https://github.com/Aleblazer/zmk-nv3007-display
-add_subdirectory(drivers)
-
 if(CONFIG_SHIELD_PROSPECTOR_ADAPTER)
 
         if(CONFIG_DT_HAS_ZMK_BEHAVIOR_CAPS_WORD_ENABLED)
