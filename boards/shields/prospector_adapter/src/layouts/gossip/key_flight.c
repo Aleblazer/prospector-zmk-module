@@ -7,6 +7,11 @@
 #include <zmk/hid.h>
 #include <dt-bindings/zmk/hid_usage_pages.h>
 #include <dt-bindings/zmk/modifiers.h>
+/*
+ * LVGL 9.3 documents setting custom callbacks on the struct that
+ * lv_draw_buf_get_handlers() returns, but keeps its fields in this header
+ */
+#include <src/draw/lv_draw_buf_private.h>
 
 #include <fonts.h>
 
