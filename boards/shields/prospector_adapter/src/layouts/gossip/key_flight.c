@@ -41,23 +41,28 @@
 #define GROWTH_CURVE 1.8f
 
 /* Fully opaque until this far through the flight, then fading out */
-#define FADE_START 0.78f
+#define FADE_START 0.74f
 
 #define PI_F 3.14159265f
 
 /*
- * Steps about 15% apart, so each jump between neighbouring sizes stays
- * small; at 30% apart the jumps showed. Where the curve moves fastest a
- * step lasts under two frames, and early on a key holds each small size
- * for longer, as intended.
+ * About 15% apart up to 32 px and about 6% apart above. The growth curve
+ * moves fastest through the large sizes, where each jump is also the most
+ * pixels, so that is where the extra steps go; at 15% apart there the
+ * jumps showed. Small keys grow slowly and their steps are only a pixel
+ * or two.
  */
 static const lv_font_t *const flight_fonts[] = {
     &DINish_SemiBold_12, &DINish_SemiBold_14, &DINish_SemiBold_16, &DINish_SemiBold_18,
     &DINish_SemiBold_21, &DINish_SemiBold_24, &DINish_SemiBold_28, &DINish_SemiBold_32,
-    &DINish_SemiBold_37, &DINish_SemiBold_42, &DINish_SemiBold_48, &DINish_SemiBold_55,
-    &DINish_SemiBold_63, &DINish_SemiBold_72,
+    &DINish_SemiBold_34, &DINish_SemiBold_36, &DINish_SemiBold_38, &DINish_SemiBold_40,
+    &DINish_SemiBold_43, &DINish_SemiBold_45, &DINish_SemiBold_48, &DINish_SemiBold_51,
+    &DINish_SemiBold_54, &DINish_SemiBold_57, &DINish_SemiBold_61, &DINish_SemiBold_65,
+    &DINish_SemiBold_68, &DINish_SemiBold_72,
 };
-static const uint8_t flight_font_px[] = {12, 14, 16, 18, 21, 24, 28, 32, 37, 42, 48, 55, 63, 72};
+static const uint8_t flight_font_px[] = {
+    12, 14, 16, 18, 21, 24, 28, 32, 34, 36, 38, 40, 43, 45, 48, 51, 54, 57, 61, 65, 68, 72,
+};
 #define FLIGHT_FONT_COUNT ARRAY_SIZE(flight_fonts)
 
 struct flight {
