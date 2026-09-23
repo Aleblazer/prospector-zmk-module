@@ -28,9 +28,18 @@
 #define FLIGHT_POOL 12
 #define FRAME_MS 30
 
-/* A key starts 18 px tall and flies until it is 18 / 0.18 = 100 px */
+/*
+ * A key grows at a steady rate, the same factor every frame, from 18 px
+ * toward 120 px: 42 px about 45% of the way through, 74 px at 75% and
+ * the 96 px step at 88%. True perspective at constant speed would hold it
+ * small and then explode at the very end, which on a screen this short
+ * showed little but small keys.
+ */
 #define START_SIZE 18.0f
-#define NEAREST_Z 0.18f
+#define END_SIZE 120.0f
+
+/* Fully opaque until this far through the flight, then fading out */
+#define FADE_START 0.7f
 
 #define PI_F 3.14159265f
 
@@ -110,20 +119,15 @@ static char usage_to_char(uint32_t usage, bool shift) {
     return 0;
 }
 
+static float clampf(float v, float lo, float hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+}
+
 static void flight_place(struct flight *f, float u) {
-    /* Accelerate toward the viewer: depth closes slowly, then rushes past */
-    const float e = u * u;
-    const float z = 1.0f - (1.0f - NEAREST_Z) * e;
+    /* Steady growth: the same factor every frame */
+    const float size = START_SIZE * powf(END_SIZE / START_SIZE, u);
 
-    /* Travel along the heading, bowed sideways by the bend, seen through perspective */
-    const float side = sinf(PI_F * u) * f->bend;
-    const float wx = f->ux * f->distance * e - f->uy * side;
-    const float wy = f->uy * f->distance * e + f->ux * side;
-    const float sx = f->ox + wx / z;
-    const float sy = f->oy + wy / z;
-
-    /* The largest font step that does not overshoot the perspective size */
-    const float size = START_SIZE / z;
+    /* The largest font step that does not overshoot that size */
     uint8_t font = 0;
     while (font + 1 < FLIGHT_FONT_COUNT && flight_font_px[font + 1] <= size) {
         font++;
@@ -133,9 +137,26 @@ static void flight_place(struct flight *f, float u) {
         f->font = font;
     }
 
-    /* Quick fade in, then fade out as it passes the viewer */
-    const float fade_in = u * 8.0f < 1.0f ? u * 8.0f : 1.0f;
-    const float alpha = fade_in * powf(1.0f - u, 1.3f);
+    /* A gentle drift along the heading, bowed sideways by the bend */
+    const float side = sinf(PI_F * u) * f->bend;
+    float sx = f->ox + f->ux * f->distance * u - f->uy * side;
+    float sy = f->oy + f->uy * f->distance * u + f->ux * side;
+
+    /*
+     * Keep the whole key on screen at its current size, so a key near an
+     * edge is pushed inward as it grows instead of leaving the screen. The
+     * half extents are rough: DINish capitals are about 0.7 of the font
+     * size wide at most and the label box is about 0.9 tall.
+     */
+    const float half_w = 0.35f * flight_font_px[font];
+    const float half_h = 0.45f * flight_font_px[font];
+    sx = clampf(sx, half_w, SCREEN_WIDTH - half_w);
+    sy = clampf(sy, half_h, SCREEN_HEIGHT - half_h);
+
+    /* Quick fade in, fully opaque through most of the flight, then a smooth fade out */
+    const float fade_in = clampf(u * 12.0f, 0.0f, 1.0f);
+    const float t = clampf((u - FADE_START) / (1.0f - FADE_START), 0.0f, 1.0f);
+    const float alpha = fade_in * (1.0f - t * t * (3.0f - 2.0f * t));
     lv_obj_set_style_text_opa(f->label, (lv_opa_t)(alpha * 255.0f), LV_PART_MAIN);
 
     lv_obj_align(f->label, LV_ALIGN_CENTER, (int32_t)lroundf(sx - SCREEN_WIDTH / 2.0f),
@@ -166,13 +187,13 @@ static void flight_launch(char c, uint32_t now) {
     const float heading = rng_range(0.0f, 2.0f * PI_F);
     f->ux = cosf(heading);
     f->uy = sinf(heading);
-    f->distance = rng_range(80.0f, 130.0f);
-    f->bend = rng_range(20.0f, 70.0f) * ((rng_next() & 1) ? 1.0f : -1.0f);
+    f->distance = rng_range(30.0f, 70.0f);
+    f->bend = rng_range(10.0f, 30.0f) * ((rng_next() & 1) ? 1.0f : -1.0f);
     /* Anywhere on screen, clear of the edges and of the indicators along the bottom */
     f->ox = rng_range(24.0f, SCREEN_WIDTH - 24.0f);
     f->oy = rng_range(16.0f, SCREEN_HEIGHT - 32.0f);
     f->start = now;
-    f->duration = (uint32_t)rng_range(900.0f, 1200.0f);
+    f->duration = (uint32_t)rng_range(1100.0f, 1400.0f);
     f->active = true;
 
     /* The newest key is the farthest away, so it draws beneath those already in flight */
