@@ -29,32 +29,35 @@
 #define FRAME_MS 30
 
 /*
- * A key grows at a steady rate, the same factor every frame, from 18 px
- * toward 120 px: 42 px about 45% of the way through, 72 px at 73% and
- * the 96 px step at 88%. True perspective at constant speed would hold it
- * small and then explode at the very end, which on a screen this short
- * showed little but small keys.
+ * A key grows from 12 px to 72 px, reaching full size 85% of the way
+ * through its flight. The growth is exponential, so each frame scales it
+ * by a similar factor, and bent by GROWTH_CURVE so the key lingers small
+ * and then rushes through the large sizes: under 23 px for the first half,
+ * then 28 px to 72 px in the last third.
  */
-#define START_SIZE 18.0f
-#define END_SIZE 120.0f
+#define START_SIZE 12.0f
+#define MAX_SIZE 72.0f
+#define MAX_SIZE_AT 0.85f
+#define GROWTH_CURVE 1.8f
 
 /* Fully opaque until this far through the flight, then fading out */
-#define FADE_START 0.7f
+#define FADE_START 0.78f
 
 #define PI_F 3.14159265f
 
 /*
- * Steps about 15% apart. A key grows about 5% a frame, so each step shows
- * for only 2-3 frames and the growth reads as continuous; at 30% apart
- * each size held for about six frames and the jumps showed.
+ * Steps about 15% apart, so each jump between neighbouring sizes stays
+ * small; at 30% apart the jumps showed. Where the curve moves fastest a
+ * step lasts under two frames, and early on a key holds each small size
+ * for longer, as intended.
  */
 static const lv_font_t *const flight_fonts[] = {
-    &DINish_SemiBold_18, &DINish_SemiBold_21, &DINish_SemiBold_24, &DINish_SemiBold_28,
-    &DINish_SemiBold_32, &DINish_SemiBold_37, &DINish_SemiBold_42, &DINish_SemiBold_48,
-    &DINish_SemiBold_55, &DINish_SemiBold_63, &DINish_SemiBold_72, &DINish_SemiBold_83,
-    &DINish_SemiBold_96,
+    &DINish_SemiBold_12, &DINish_SemiBold_14, &DINish_SemiBold_16, &DINish_SemiBold_18,
+    &DINish_SemiBold_21, &DINish_SemiBold_24, &DINish_SemiBold_28, &DINish_SemiBold_32,
+    &DINish_SemiBold_37, &DINish_SemiBold_42, &DINish_SemiBold_48, &DINish_SemiBold_55,
+    &DINish_SemiBold_63, &DINish_SemiBold_72,
 };
-static const uint8_t flight_font_px[] = {18, 21, 24, 28, 32, 37, 42, 48, 55, 63, 72, 83, 96};
+static const uint8_t flight_font_px[] = {12, 14, 16, 18, 21, 24, 28, 32, 37, 42, 48, 55, 63, 72};
 #define FLIGHT_FONT_COUNT ARRAY_SIZE(flight_fonts)
 
 struct flight {
@@ -131,8 +134,9 @@ static float clampf(float v, float lo, float hi) {
 }
 
 static void flight_place(struct flight *f, float u) {
-    /* Steady growth: the same factor every frame */
-    const float size = START_SIZE * powf(END_SIZE / START_SIZE, u);
+    /* Exponential growth along a bent timeline, holding at full size once reached */
+    const float grown = powf(clampf(u / MAX_SIZE_AT, 0.0f, 1.0f), GROWTH_CURVE);
+    const float size = START_SIZE * powf(MAX_SIZE / START_SIZE, grown);
 
     /* The largest font step that does not overshoot that size */
     uint8_t font = 0;
