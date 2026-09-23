@@ -40,8 +40,12 @@
 #define MAX_SIZE_AT 0.85f
 #define GROWTH_CURVE 1.8f
 
-/* Fully opaque until this far through the flight, then fading out */
-#define FADE_START 0.78f
+/*
+ * Fully opaque until this far through the flight, then a quick fade: the
+ * last 8%, under 100 ms or about three frames, so a key snaps out rather
+ * than dissolving.
+ */
+#define FADE_START 0.92f
 
 #define PI_F 3.14159265f
 
@@ -164,7 +168,7 @@ static void flight_place(struct flight *f, float u) {
     sx = clampf(sx, half_w, SCREEN_WIDTH - half_w);
     sy = clampf(sy, half_h, SCREEN_HEIGHT - half_h);
 
-    /* Quick fade in, fully opaque through most of the flight, then a smooth fade out */
+    /* Quick fade in, fully opaque through most of the flight, then a short fade out */
     const float fade_in = clampf(u * 12.0f, 0.0f, 1.0f);
     const float t = clampf((u - FADE_START) / (1.0f - FADE_START), 0.0f, 1.0f);
     const float alpha = fade_in * (1.0f - t * t * (3.0f - 2.0f * t));
@@ -204,7 +208,7 @@ static void flight_launch(char c, uint32_t now) {
     f->ox = rng_range(24.0f, SCREEN_WIDTH - 24.0f);
     f->oy = rng_range(16.0f, SCREEN_HEIGHT - 32.0f);
     f->start = now;
-    f->duration = (uint32_t)rng_range(1100.0f, 1400.0f);
+    f->duration = (uint32_t)rng_range(900.0f, 1170.0f);
     f->active = true;
 
     /* The newest key is the farthest away, so it draws beneath those already in flight */
