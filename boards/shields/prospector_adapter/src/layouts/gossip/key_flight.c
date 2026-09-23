@@ -30,7 +30,7 @@
 
 /*
  * A key grows at a steady rate, the same factor every frame, from 18 px
- * toward 120 px: 42 px about 45% of the way through, 74 px at 75% and
+ * toward 120 px: 42 px about 45% of the way through, 72 px at 73% and
  * the 96 px step at 88%. True perspective at constant speed would hold it
  * small and then explode at the very end, which on a screen this short
  * showed little but small keys.
@@ -43,11 +43,18 @@
 
 #define PI_F 3.14159265f
 
+/*
+ * Steps about 15% apart. A key grows about 5% a frame, so each step shows
+ * for only 2-3 frames and the growth reads as continuous; at 30% apart
+ * each size held for about six frames and the jumps showed.
+ */
 static const lv_font_t *const flight_fonts[] = {
-    &DINish_SemiBold_18, &DINish_SemiBold_24, &DINish_SemiBold_32, &DINish_SemiBold_42,
-    &DINish_SemiBold_56, &DINish_SemiBold_74, &DINish_SemiBold_96,
+    &DINish_SemiBold_18, &DINish_SemiBold_21, &DINish_SemiBold_24, &DINish_SemiBold_28,
+    &DINish_SemiBold_32, &DINish_SemiBold_37, &DINish_SemiBold_42, &DINish_SemiBold_48,
+    &DINish_SemiBold_55, &DINish_SemiBold_63, &DINish_SemiBold_72, &DINish_SemiBold_83,
+    &DINish_SemiBold_96,
 };
-static const uint8_t flight_font_px[] = {18, 24, 32, 42, 56, 74, 96};
+static const uint8_t flight_font_px[] = {18, 21, 24, 28, 32, 37, 42, 48, 55, 63, 72, 83, 96};
 #define FLIGHT_FONT_COUNT ARRAY_SIZE(flight_fonts)
 
 struct flight {
