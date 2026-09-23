@@ -16,9 +16,11 @@
  * growing as it nears, drifting off its heading and fading as it passes.
  *
  * Perspective is faked with a stepped set of font sizes rather than LVGL's
- * transform scaling, which is slow on this chip and blurs text. Keys are
- * queued by the event listener and launched from an LVGL timer, so all
- * LVGL calls stay on the display thread.
+ * transform scaling, which is slow on this chip and blurs text. Each key is
+ * tilted and spun with LVGL's transform rotation, which draws the label
+ * into a temporary buffer first; Kconfig.defconfig enlarges LVGL's pool
+ * for that. Keys are queued by the event listener and launched from an
+ * LVGL timer, so all LVGL calls stay on the display thread.
  */
 
 #define SCREEN_WIDTH 428
@@ -39,6 +41,10 @@
 #define MAX_SIZE 72.0f
 #define MAX_SIZE_AT 0.85f
 #define GROWTH_CURVE 1.8f
+
+/* Each key starts tilted up to this far either way and turns up to SPIN_MAX over its flight */
+#define TILT_MAX_DEG 20.0f
+#define SPIN_MAX_DEG 30.0f
 
 /* Fully opaque until this far through the flight, then fading out */
 #define FADE_START 0.74f
@@ -76,6 +82,9 @@ struct flight {
     float ux, uy;
     float distance;
     float bend;
+    /* Starting angle and how far it turns over the flight, in degrees */
+    float tilt;
+    float spin;
 };
 
 static struct flight flights[FLIGHT_POOL];
@@ -175,6 +184,10 @@ static void flight_place(struct flight *f, float u) {
     const float alpha = fade_in * (1.0f - t * t * (3.0f - 2.0f * t));
     lv_obj_set_style_text_opa(f->label, (lv_opa_t)(alpha * 255.0f), LV_PART_MAIN);
 
+    /* LVGL rotation is in tenths of a degree, about the label's centre */
+    lv_obj_set_style_transform_rotation(f->label, (int32_t)lroundf((f->tilt + f->spin * u) * 10.0f),
+                                        LV_PART_MAIN);
+
     lv_obj_align(f->label, LV_ALIGN_CENTER, (int32_t)lroundf(sx - SCREEN_WIDTH / 2.0f),
                  (int32_t)lroundf(sy - SCREEN_HEIGHT / 2.0f));
 }
@@ -205,6 +218,8 @@ static void flight_launch(char c, uint32_t now) {
     f->uy = sinf(heading);
     f->distance = rng_range(30.0f, 70.0f);
     f->bend = rng_range(10.0f, 30.0f) * ((rng_next() & 1) ? 1.0f : -1.0f);
+    f->tilt = rng_range(-TILT_MAX_DEG, TILT_MAX_DEG);
+    f->spin = rng_range(-SPIN_MAX_DEG, SPIN_MAX_DEG);
     /* Anywhere on screen, clear of the edges and of the indicators along the bottom */
     f->ox = rng_range(24.0f, SCREEN_WIDTH - 24.0f);
     f->oy = rng_range(16.0f, SCREEN_HEIGHT - 32.0f);
@@ -288,6 +303,9 @@ int zmk_widget_key_flight_init(lv_obj_t *parent) {
         f->label = lv_label_create(parent);
         lv_obj_set_style_text_color(f->label, lv_color_hex(0xffffff), LV_PART_MAIN);
         lv_obj_set_style_text_font(f->label, flight_fonts[0], LV_PART_MAIN);
+        /* Rotate about the centre, whatever size the key is at */
+        lv_obj_set_style_transform_pivot_x(f->label, lv_pct(50), LV_PART_MAIN);
+        lv_obj_set_style_transform_pivot_y(f->label, lv_pct(50), LV_PART_MAIN);
         f->font = 0;
         lv_obj_add_flag(f->label, LV_OBJ_FLAG_HIDDEN);
         f->active = false;

@@ -5,4 +5,10 @@ config ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     select LV_USE_FLEX
     select LV_COLOR_SCREEN_TRANSP
 
+# Rotating a key draws it into a temporary ARGB8888 buffer first, about
+# 18 KB for a 72 px key, more than the shield's 16 KB pool holds on top of
+# the screen's objects. The dongle has roughly 97 KB of RAM to spare.
+config LV_Z_MEM_POOL_SIZE
+    default 49152
+
 endif
