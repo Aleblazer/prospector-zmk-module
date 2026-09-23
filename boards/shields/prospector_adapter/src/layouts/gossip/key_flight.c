@@ -126,9 +126,9 @@ K_MSGQ_DEFINE(key_flight_queue, sizeof(char), 16, 1);
 #if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
 /*
  * Diagnostic: once a second, log the frame rate the animation actually
- * gets (display refreshes that moved keys), the longest gap between them, how many keys are in flight, were
- * dropped from a full queue or cut short to free memory, and how full the
- * key heap and LVGL's pool are.
+ * gets (display refreshes that moved keys), the longest gap between them,
+ * how many keys are in flight, were dropped from a full queue or cut short
+ * to free memory, and how full the key heap and LVGL's pool are.
  */
 static atomic_t stat_dropped;
 static uint32_t stat_cut_short;
