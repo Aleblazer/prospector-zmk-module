@@ -18,9 +18,9 @@
  * Perspective is faked with a stepped set of font sizes rather than LVGL's
  * transform scaling, which is slow on this chip and blurs text. Each key is
  * tilted and spun with LVGL's transform rotation, which draws the label
- * into a temporary buffer first; Kconfig.defconfig enlarges LVGL's pool
- * for that. Keys are queued by the event listener and launched from an
- * LVGL timer, so all LVGL calls stay on the display thread.
+ * into a temporary buffer first; those buffers come from a heap of their
+ * own (see below). Keys are queued by the event listener and launched from
+ * an LVGL timer, so all LVGL calls stay on the display thread.
  */
 
 #define SCREEN_WIDTH 428
@@ -75,6 +75,8 @@ struct flight {
     lv_obj_t *label;
     bool active;
     uint8_t font;
+    /* The key's character, shown with lv_label_set_text_static so launching allocates nothing */
+    char text[2];
     uint32_t start;
     uint32_t duration;
     /* Launch point on screen, heading, how far it travels and how far its path bends */
@@ -88,6 +90,48 @@ struct flight {
 };
 
 static struct flight flights[FLIGHT_POOL];
+
+/*
+ * Temporary drawing buffers: the ARGB8888 layer each rotated key is drawn
+ * into, about 17 KB for a 72 px key, and the per-letter buffers labels
+ * use. LVGL takes these from its main pool by default, and when one does
+ * not fit it waits and retries rather than failing. Among the labels,
+ * texts and styles in that pool the free space fragmented until no gap
+ * could hold a rotated key, and the display froze a couple of seconds
+ * into typing. In a heap of their own they are all freed by the end of
+ * each frame, so the heap empties completely and any one buffer fits.
+ */
+#define DRAW_HEAP_SIZE (40 * 1024)
+K_HEAP_DEFINE(gossip_draw_heap, DRAW_HEAP_SIZE);
+
+static bool in_draw_heap(const void *p) {
+    const uintptr_t base = (uintptr_t)gossip_draw_heap.heap.init_mem;
+    return (uintptr_t)p >= base && (uintptr_t)p < base + gossip_draw_heap.heap.init_bytes;
+}
+
+static void *draw_heap_malloc(size_t size, lv_color_format_t cf) {
+    ARG_UNUSED(cf);
+    /* Room to align the start, as LVGL's own allocator allows */
+    return k_heap_alloc(&gossip_draw_heap, size + LV_DRAW_BUF_ALIGN - 1, K_NO_WAIT);
+}
+
+static void draw_heap_free(void *buf) {
+    /* Anything allocated before the switch came from LVGL's pool */
+    if (in_draw_heap(buf)) {
+        k_heap_free(&gossip_draw_heap, buf);
+    } else {
+        lv_free(buf);
+    }
+}
+
+static void draw_heap_install(void) {
+    lv_draw_buf_handlers_t *handlers[] = {lv_draw_buf_get_handlers(),
+                                          lv_draw_buf_get_font_handlers()};
+    for (size_t i = 0; i < ARRAY_SIZE(handlers); i++) {
+        handlers[i]->buf_malloc_cb = draw_heap_malloc;
+        handlers[i]->buf_free_cb = draw_heap_free;
+    }
+}
 
 /* Filled by the event listener, drained on the display thread */
 K_MSGQ_DEFINE(key_flight_queue, sizeof(char), 16, 1);
@@ -210,8 +254,9 @@ static void flight_launch(char c, uint32_t now) {
         }
     }
 
-    const char text[2] = {c, '\0'};
-    lv_label_set_text(f->label, text);
+    f->text[0] = c;
+    f->text[1] = '\0';
+    lv_label_set_text_static(f->label, f->text);
 
     const float heading = rng_range(0.0f, 2.0f * PI_F);
     f->ux = cosf(heading);
@@ -297,15 +342,26 @@ static void flight_demo_cb(lv_timer_t *timer) {
 
 int zmk_widget_key_flight_init(lv_obj_t *parent) {
     rng_state = k_cycle_get_32() | 1;
+    draw_heap_install();
 
     for (int i = 0; i < FLIGHT_POOL; i++) {
         struct flight *f = &flights[i];
         f->label = lv_label_create(parent);
+        /*
+         * Set every style property a flight changes now, so later updates
+         * overwrite values in place instead of growing the label's style
+         * list in LVGL's pool while keys fly.
+         */
         lv_obj_set_style_text_color(f->label, lv_color_hex(0xffffff), LV_PART_MAIN);
         lv_obj_set_style_text_font(f->label, flight_fonts[0], LV_PART_MAIN);
+        lv_obj_set_style_text_opa(f->label, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_transform_rotation(f->label, 0, LV_PART_MAIN);
         /* Rotate about the centre, whatever size the key is at */
         lv_obj_set_style_transform_pivot_x(f->label, lv_pct(50), LV_PART_MAIN);
         lv_obj_set_style_transform_pivot_y(f->label, lv_pct(50), LV_PART_MAIN);
+        lv_obj_align(f->label, LV_ALIGN_CENTER, 0, 0);
+        f->text[0] = '\0';
+        lv_label_set_text_static(f->label, f->text);
         f->font = 0;
         lv_obj_add_flag(f->label, LV_OBJ_FLAG_HIDDEN);
         f->active = false;
