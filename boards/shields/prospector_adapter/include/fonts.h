@@ -55,6 +55,6 @@ LV_FONT_DECLARE(DINish_Medium_24);
 LV_FONT_DECLARE(DINish_SemiBold_A8_18);
 LV_FONT_DECLARE(DINish_SemiBold_A8_36);
 LV_FONT_DECLARE(DINish_SemiBold_A8_72);
-LV_FONT_DECLARE(DINishCondensed_SemiBold_14);
+LV_FONT_DECLARE(DINishCondensed_SemiBold_28);
 
 #endif

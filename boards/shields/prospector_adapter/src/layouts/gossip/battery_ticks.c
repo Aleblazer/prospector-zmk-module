@@ -18,9 +18,10 @@
 
 #define TICKS_SHOWN (PERIPHERAL_COUNT > 3 ? 3 : PERIPHERAL_COUNT)
 
-#define TICK_WIDTH 14
-#define TICK_HEIGHT 3
-#define TICK_GAP 4
+#define TICK_WIDTH 28
+#define TICK_HEIGHT 6
+#define TICK_GAP 8
+#define TICK_RADIUS 2
 #define TICK_LOW_LEVEL 20
 
 #define COLOR_TRACK 0x303030
@@ -109,13 +110,13 @@ lv_obj_t *zmk_widget_gossip_battery_init(lv_obj_t *parent) {
         lv_obj_set_size(track, TICK_WIDTH, TICK_HEIGHT);
         lv_obj_set_style_bg_color(track, lv_color_hex(COLOR_TRACK), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(track, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_radius(track, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(track, TICK_RADIUS, LV_PART_MAIN);
 
         fills[i] = lv_obj_create(track);
         lv_obj_remove_style_all(fills[i]);
         lv_obj_set_size(fills[i], 0, TICK_HEIGHT);
         lv_obj_set_style_bg_opa(fills[i], LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_radius(fills[i], 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(fills[i], TICK_RADIUS, LV_PART_MAIN);
     }
 
     widget_gossip_battery_init();

@@ -9,7 +9,7 @@
 
 #include <fonts.h>
 
-/* The active layer's name, small and grey in a corner; always in capitals */
+/* The active layer's name, grey in a corner; always in capitals */
 
 static lv_obj_t *layer_label;
 
@@ -30,7 +30,7 @@ static void gossip_layer_update_cb(struct gossip_layer_state state) {
         snprintf(text, sizeof(text), "%d", state.index);
     }
 
-    /* The 14 px font holds no lowercase */
+    /* The 28 px font holds no lowercase */
     for (int i = 0; text[i]; i++) {
         text[i] = toupper((unsigned char)text[i]);
     }
@@ -48,7 +48,7 @@ ZMK_SUBSCRIPTION(widget_gossip_layer, zmk_layer_state_changed);
 
 lv_obj_t *zmk_widget_gossip_layer_init(lv_obj_t *parent) {
     layer_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(layer_label, &DINishCondensed_SemiBold_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(layer_label, &DINishCondensed_SemiBold_28, LV_PART_MAIN);
     lv_obj_set_style_text_color(layer_label, lv_color_hex(0x8a8a8a), LV_PART_MAIN);
     lv_label_set_text(layer_label, "");
 

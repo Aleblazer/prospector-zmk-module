@@ -12,16 +12,18 @@ lv_obj_t *zmk_display_status_screen() {
     /*
      * 428x142 NV3007 canvas. Typed keys fly across the whole screen; the
      * only fixed elements are the layer name in the bottom-left corner and
-     * the battery bars in the bottom-right, both centred on y = 130. They
-     * are created after the keys so the keys pass beneath them.
+     * the battery bars in the bottom-right. The name's 19 px capitals sit
+     * on y = 114-133 and the 6 px bars on y = 121-126, both centred on
+     * about y = 123.5. They are created after the keys so the keys pass
+     * beneath them.
      */
     zmk_widget_key_flight_init(screen);
 
     lv_obj_t *layer = zmk_widget_gossip_layer_init(screen);
-    lv_obj_align(layer, LV_ALIGN_BOTTOM_LEFT, 8, -5);
+    lv_obj_align(layer, LV_ALIGN_BOTTOM_LEFT, 10, -4);
 
     lv_obj_t *battery = zmk_widget_gossip_battery_init(screen);
-    lv_obj_align(battery, LV_ALIGN_BOTTOM_RIGHT, -8, -11);
+    lv_obj_align(battery, LV_ALIGN_BOTTOM_RIGHT, -10, -15);
 
     return screen;
 }
