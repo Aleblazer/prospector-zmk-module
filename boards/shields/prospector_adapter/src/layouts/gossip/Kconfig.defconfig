@@ -12,4 +12,13 @@ config ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
 config LV_Z_MEM_POOL_SIZE
     default 24576
 
+config PROSPECTOR_GOSSIP_STATS
+    bool "Log Gossip's frame rate and memory use once a second"
+    select SYS_HEAP_RUNTIME_STATS
+    help
+      Diagnostic for bring-up: logs the animation's actual frame rate, the
+      longest gap between frames, keys in flight and dropped, and how full
+      the drawing heap and LVGL's pool are. Needs a logging build, such as
+      the zmk-usb-logging snippet.
+
 endif
