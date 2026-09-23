@@ -51,29 +51,10 @@ LV_FONT_DECLARE(DINish_Medium_24);
 
 #elif defined(CONFIG_PROSPECTOR_STATUS_SCREEN_GOSSIP)
 
-/* Flying keys, one per perspective step, and the layer name */
-LV_FONT_DECLARE(DINish_SemiBold_12);
-LV_FONT_DECLARE(DINish_SemiBold_14);
-LV_FONT_DECLARE(DINish_SemiBold_16);
-LV_FONT_DECLARE(DINish_SemiBold_18);
-LV_FONT_DECLARE(DINish_SemiBold_21);
-LV_FONT_DECLARE(DINish_SemiBold_24);
-LV_FONT_DECLARE(DINish_SemiBold_28);
-LV_FONT_DECLARE(DINish_SemiBold_32);
-LV_FONT_DECLARE(DINish_SemiBold_34);
-LV_FONT_DECLARE(DINish_SemiBold_36);
-LV_FONT_DECLARE(DINish_SemiBold_38);
-LV_FONT_DECLARE(DINish_SemiBold_40);
-LV_FONT_DECLARE(DINish_SemiBold_43);
-LV_FONT_DECLARE(DINish_SemiBold_45);
-LV_FONT_DECLARE(DINish_SemiBold_48);
-LV_FONT_DECLARE(DINish_SemiBold_51);
-LV_FONT_DECLARE(DINish_SemiBold_54);
-LV_FONT_DECLARE(DINish_SemiBold_57);
-LV_FONT_DECLARE(DINish_SemiBold_61);
-LV_FONT_DECLARE(DINish_SemiBold_65);
-LV_FONT_DECLARE(DINish_SemiBold_68);
-LV_FONT_DECLARE(DINish_SemiBold_72);
+/* Master glyphs the flying keys are rendered from, and the layer name */
+LV_FONT_DECLARE(DINish_SemiBold_A8_18);
+LV_FONT_DECLARE(DINish_SemiBold_A8_36);
+LV_FONT_DECLARE(DINish_SemiBold_A8_72);
 LV_FONT_DECLARE(DINishCondensed_SemiBold_14);
 
 #endif

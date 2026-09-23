@@ -2,13 +2,14 @@ if PROSPECTOR_STATUS_SCREEN_GOSSIP
 
 config ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     select LV_USE_LABEL
+    select LV_USE_IMAGE
     select LV_USE_FLEX
     select LV_COLOR_SCREEN_TRANSP
 
-# Rotated keys' drawing buffers come from a 40 KB heap of their own in
-# key_flight.c. LVGL's pool still holds the draw tasks queued each frame
-# for up to 12 moving labels, so it gets some headroom over the shield's
-# 16 KB.
+# Key images live in a heap of their own in key_flight.c. LVGL's pool
+# holds the draw tasks and image decoder state for up to 12 moving images
+# each frame, which peaked near 10 KB in testing, so it gets some headroom
+# over the shield's 16 KB.
 config LV_Z_MEM_POOL_SIZE
     default 24576
 
@@ -17,8 +18,8 @@ config PROSPECTOR_GOSSIP_STATS
     select SYS_HEAP_RUNTIME_STATS
     help
       Diagnostic for bring-up: logs the animation's actual frame rate, the
-      longest gap between frames, keys in flight and dropped, and how full
-      the drawing heap and LVGL's pool are. Needs a logging build, such as
-      the zmk-usb-logging snippet.
+      longest gap between frames, keys in flight, dropped and cut short,
+      and how full the key heap and LVGL's pool are. Needs a logging build,
+      such as the zmk-usb-logging snippet.
 
 endif

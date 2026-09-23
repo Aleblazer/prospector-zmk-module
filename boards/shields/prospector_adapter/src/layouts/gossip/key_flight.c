@@ -1,17 +1,13 @@
 #include "key_flight.h"
 
 #include <math.h>
+#include <string.h>
 #include <zephyr/kernel.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/hid.h>
 #include <dt-bindings/zmk/hid_usage_pages.h>
 #include <dt-bindings/zmk/modifiers.h>
-/*
- * LVGL 9.3 documents setting custom callbacks on the struct that
- * lv_draw_buf_get_handlers() returns, but keeps its fields in this header
- */
-#include <src/draw/lv_draw_buf_private.h>
 
 #include <fonts.h>
 
@@ -26,14 +22,19 @@ LOG_MODULE_REGISTER(gossip, LOG_LEVEL_INF);
 /*
  * Every printable key pressed on the keyboard appears at a random spot on
  * the screen and flies out toward the viewer along a random bent path:
- * growing as it nears, drifting off its heading and fading as it passes.
+ * growing as it nears, tilting and turning, drifting off its heading and
+ * fading as it passes.
  *
- * Perspective is faked with a stepped set of font sizes rather than LVGL's
- * transform scaling, which is slow on this chip and blurs text. Each key is
- * tilted and spun with LVGL's transform rotation, which draws the label
- * into a temporary buffer first; those buffers come from a heap of their
- * own (see below). Keys are queued by the event listener and launched from
- * an LVGL timer, so all LVGL calls stay on the display thread.
+ * Keys are drawn here rather than by LVGL. Each frame, every key in flight
+ * is rendered once into its own A8 (alpha only) image at its exact size and
+ * angle, sampled from a master glyph, and LVGL blends that image as a single
+ * tinted fill. LVGL's transform rotation drew each rotated label into a full
+ * colour layer first; with 4-5 keys it managed 10-21 frames a second and
+ * filled 40 KB with layers until it crashed. Rendering here also makes the
+ * growth continuous instead of stepping through font sizes.
+ *
+ * Keys are queued by the event listener and launched from an LVGL timer, so
+ * all LVGL calls stay on the display thread.
  */
 
 #define SCREEN_WIDTH 428
@@ -62,34 +63,46 @@ LOG_MODULE_REGISTER(gossip, LOG_LEVEL_INF);
 /* Fully opaque until this far through the flight, then fading out */
 #define FADE_START 0.74f
 
+#define KEY_COLOR 0xffffff
+
 #define PI_F 3.14159265f
 
 /*
- * About 15% apart up to 32 px and about 6% apart above. The growth curve
- * moves fastest through the large sizes, where each jump is also the most
- * pixels, so that is where the extra steps go; at 15% apart there the
- * jumps showed. Small keys grow slowly and their steps are only a pixel
- * or two.
+ * Master glyphs, 8 bpp so a sample is one byte. A key is sampled from the
+ * smallest master at least its size, so no master is ever shrunk by more
+ * than half and bilinear sampling stays clean.
  */
-static const lv_font_t *const flight_fonts[] = {
-    &DINish_SemiBold_12, &DINish_SemiBold_14, &DINish_SemiBold_16, &DINish_SemiBold_18,
-    &DINish_SemiBold_21, &DINish_SemiBold_24, &DINish_SemiBold_28, &DINish_SemiBold_32,
-    &DINish_SemiBold_34, &DINish_SemiBold_36, &DINish_SemiBold_38, &DINish_SemiBold_40,
-    &DINish_SemiBold_43, &DINish_SemiBold_45, &DINish_SemiBold_48, &DINish_SemiBold_51,
-    &DINish_SemiBold_54, &DINish_SemiBold_57, &DINish_SemiBold_61, &DINish_SemiBold_65,
-    &DINish_SemiBold_68, &DINish_SemiBold_72,
+static const lv_font_t *const masters[] = {
+    &DINish_SemiBold_A8_18,
+    &DINish_SemiBold_A8_36,
+    &DINish_SemiBold_A8_72,
 };
-static const uint8_t flight_font_px[] = {
-    12, 14, 16, 18, 21, 24, 28, 32, 34, 36, 38, 40, 43, 45, 48, 51, 54, 57, 61, 65, 68, 72,
+static const float master_px[] = {18.0f, 36.0f, 72.0f};
+#define MASTER_COUNT ARRAY_SIZE(masters)
+
+/*
+ * Each key's image buffer is square, sized for its largest master glyph at
+ * any angle: 4.2 KB for a typical character and 7.7 KB at most. They come
+ * from this heap, which fits about 11 typical keys; when it is full, the
+ * oldest keys give way to a new one. Nothing else allocates here, and every
+ * buffer is freed when its key lands, so there is nothing to fragment it.
+ */
+#define KEY_HEAP_SIZE (48 * 1024)
+K_HEAP_DEFINE(gossip_key_heap, KEY_HEAP_SIZE);
+
+struct glyph {
+    const uint8_t *bitmap;
+    uint16_t w;
+    uint16_t h;
 };
-#define FLIGHT_FONT_COUNT ARRAY_SIZE(flight_fonts)
 
 struct flight {
-    lv_obj_t *label;
+    lv_obj_t *image;
+    lv_image_dsc_t dsc;
+    uint8_t *buf;
+    uint32_t buf_size;
+    struct glyph glyphs[MASTER_COUNT];
     bool active;
-    uint8_t font;
-    /* The key's character, shown with lv_label_set_text_static so launching allocates nothing */
-    char text[2];
     uint32_t start;
     uint32_t duration;
     /* Launch point on screen, heading, how far it travels and how far its path bends */
@@ -104,58 +117,18 @@ struct flight {
 
 static struct flight flights[FLIGHT_POOL];
 
-/*
- * Temporary drawing buffers: the ARGB8888 layer each rotated key is drawn
- * into, about 17 KB for a 72 px key, and the per-letter buffers labels
- * use. LVGL takes these from its main pool by default, and when one does
- * not fit it waits and retries rather than failing. Among the labels,
- * texts and styles in that pool the free space fragmented until no gap
- * could hold a rotated key, and the display froze a couple of seconds
- * into typing. In a heap of their own they are all freed by the end of
- * each frame, so the heap empties completely and any one buffer fits.
- */
-#define DRAW_HEAP_SIZE (40 * 1024)
-K_HEAP_DEFINE(gossip_draw_heap, DRAW_HEAP_SIZE);
-
-static bool in_draw_heap(const void *p) {
-    const uintptr_t base = (uintptr_t)gossip_draw_heap.heap.init_mem;
-    return (uintptr_t)p >= base && (uintptr_t)p < base + gossip_draw_heap.heap.init_bytes;
-}
-
-static void *draw_heap_malloc(size_t size, lv_color_format_t cf) {
-    ARG_UNUSED(cf);
-    /* Room to align the start, as LVGL's own allocator allows */
-    return k_heap_alloc(&gossip_draw_heap, size + LV_DRAW_BUF_ALIGN - 1, K_NO_WAIT);
-}
-
-static void draw_heap_free(void *buf) {
-    /* Anything allocated before the switch came from LVGL's pool */
-    if (in_draw_heap(buf)) {
-        k_heap_free(&gossip_draw_heap, buf);
-    } else {
-        lv_free(buf);
-    }
-}
-
-static void draw_heap_install(void) {
-    lv_draw_buf_handlers_t *handlers[] = {lv_draw_buf_get_handlers(),
-                                          lv_draw_buf_get_font_handlers()};
-    for (size_t i = 0; i < ARRAY_SIZE(handlers); i++) {
-        handlers[i]->buf_malloc_cb = draw_heap_malloc;
-        handlers[i]->buf_free_cb = draw_heap_free;
-    }
-}
-
 /* Filled by the event listener, drained on the display thread */
 K_MSGQ_DEFINE(key_flight_queue, sizeof(char), 16, 1);
 
 #if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
 /*
  * Diagnostic: once a second, log the frame rate the animation actually
- * gets, the longest gap between frames, how many keys are in flight and
- * were dropped, and how full the drawing heap and LVGL's pool are.
+ * gets, the longest gap between frames, how many keys are in flight, were
+ * dropped from a full queue or cut short to free memory, and how full the
+ * key heap and LVGL's pool are.
  */
 static atomic_t stat_dropped;
+static uint32_t stat_cut_short;
 static uint32_t stat_frames;
 static uint32_t stat_worst_gap;
 static uint32_t stat_last_frame;
@@ -172,16 +145,17 @@ static void stats_frame(uint32_t now, int in_flight) {
         return;
     }
 
-    struct sys_memory_stats draw;
+    struct sys_memory_stats keys;
     struct sys_memory_stats pool;
-    sys_heap_runtime_stats_get(&gossip_draw_heap.heap, &draw);
+    sys_heap_runtime_stats_get(&gossip_key_heap.heap, &keys);
     lvgl_heap_stats(&pool);
 
-    LOG_INF("fps %u, worst gap %u ms, in flight %d, dropped %d | draw heap used %u peak %u "
-            "free %u | lvgl pool used %u peak %u free %u",
+    LOG_INF("fps %u, worst gap %u ms, in flight %d, dropped %d, cut short %u | key heap used %u "
+            "peak %u free %u | lvgl pool used %u peak %u free %u",
             stat_frames * 1000 / (now - stat_window_start), stat_worst_gap, in_flight,
-            (int)atomic_get(&stat_dropped), draw.allocated_bytes, draw.max_allocated_bytes,
-            draw.free_bytes, pool.allocated_bytes, pool.max_allocated_bytes, pool.free_bytes);
+            (int)atomic_get(&stat_dropped), stat_cut_short, keys.allocated_bytes,
+            keys.max_allocated_bytes, keys.free_bytes, pool.allocated_bytes,
+            pool.max_allocated_bytes, pool.free_bytes);
 
     stat_frames = 0;
     stat_worst_gap = 0;
@@ -244,72 +218,189 @@ static float clampf(float v, float lo, float hi) {
     return v < lo ? lo : v > hi ? hi : v;
 }
 
+/* A master's 8 bpp bitmap for a character: box_w x box_h bytes, row by row */
+static bool glyph_get(const lv_font_t *font, char c, struct glyph *out) {
+    lv_font_glyph_dsc_t g;
+    if (!lv_font_get_glyph_dsc(font, &g, (uint32_t)c, 0) || g.box_w == 0 || g.box_h == 0) {
+        return false;
+    }
+    const lv_font_fmt_txt_dsc_t *fdsc = font->dsc;
+    out->bitmap = &fdsc->glyph_bitmap[fdsc->glyph_dsc[g.gid.index].bitmap_index];
+    out->w = g.box_w;
+    out->h = g.box_h;
+    return true;
+}
+
+static inline float glyph_px(const struct glyph *g, int32_t x, int32_t y) {
+    if (x < 0 || y < 0 || x >= g->w || y >= g->h) {
+        return 0.0f;
+    }
+    return g->bitmap[y * g->w + x];
+}
+
+/* Bilinear sample at glyph coordinates, where pixel centres are whole numbers */
+static inline uint8_t glyph_sample(const struct glyph *g, float u, float v) {
+    if (u <= -1.0f || v <= -1.0f || u >= g->w || v >= g->h) {
+        return 0;
+    }
+    const float fx = floorf(u);
+    const float fy = floorf(v);
+    const int32_t x = (int32_t)fx;
+    const int32_t y = (int32_t)fy;
+    const float ax = u - fx;
+    const float ay = v - fy;
+    const float top = glyph_px(g, x, y) + (glyph_px(g, x + 1, y) - glyph_px(g, x, y)) * ax;
+    const float bottom =
+        glyph_px(g, x, y + 1) + (glyph_px(g, x + 1, y + 1) - glyph_px(g, x, y + 1)) * ax;
+    return (uint8_t)(top + (bottom - top) * ay + 0.5f);
+}
+
+static void flight_retire(struct flight *f) {
+    f->active = false;
+    lv_obj_add_flag(f->image, LV_OBJ_FLAG_HIDDEN);
+    if (f->buf != NULL) {
+        k_heap_free(&gossip_key_heap, f->buf);
+        f->buf = NULL;
+        f->buf_size = 0;
+    }
+}
+
 static void flight_place(struct flight *f, float u) {
     /* Exponential growth along a bent timeline, holding at full size once reached */
     const float grown = powf(clampf(u / MAX_SIZE_AT, 0.0f, 1.0f), GROWTH_CURVE);
     const float size = START_SIZE * powf(MAX_SIZE / START_SIZE, grown);
 
-    /* The largest font step that does not overshoot that size */
-    uint8_t font = 0;
-    while (font + 1 < FLIGHT_FONT_COUNT && flight_font_px[font + 1] <= size) {
-        font++;
+    /* The smallest master at least this size, and how much to shrink it */
+    uint8_t m = 0;
+    while (m + 1 < MASTER_COUNT && master_px[m] < size) {
+        m++;
     }
-    if (font != f->font) {
-        lv_obj_set_style_text_font(f->label, flight_fonts[font], LV_PART_MAIN);
-        f->font = font;
-    }
+    const struct glyph *g = &f->glyphs[m];
+    const float scale = size / master_px[m];
+    const float inv_scale = 1.0f / scale;
 
-    /* A gentle drift along the heading, bowed sideways by the bend */
-    const float side = sinf(PI_F * u) * f->bend;
-    float sx = f->ox + f->ux * f->distance * u - f->uy * side;
-    float sy = f->oy + f->uy * f->distance * u + f->ux * side;
+    const float angle = (f->tilt + f->spin * u) * (PI_F / 180.0f);
+    const float c = cosf(angle);
+    const float s = sinf(angle);
+
+    /* Half extents of the scaled, rotated glyph box on screen */
+    const float hw = 0.5f * scale * g->w;
+    const float hh = 0.5f * scale * g->h;
+    const float ex = fabsf(c) * hw + fabsf(s) * hh;
+    const float ey = fabsf(s) * hw + fabsf(c) * hh;
 
     /*
-     * Keep the whole key on screen at its current size, so a key near an
-     * edge is pushed inward as it grows instead of leaving the screen. The
-     * half extents are rough: DINish capitals are about 0.7 of the font
-     * size wide at most and the label box is about 0.9 tall.
+     * A gentle drift along the heading, bowed sideways by the bend, held
+     * inside the screen so a key near an edge is pushed inward as it grows.
      */
-    const float half_w = 0.35f * flight_font_px[font];
-    const float half_h = 0.45f * flight_font_px[font];
-    sx = clampf(sx, half_w, SCREEN_WIDTH - half_w);
-    sy = clampf(sy, half_h, SCREEN_HEIGHT - half_h);
+    const float side = sinf(PI_F * u) * f->bend;
+    const float sx = clampf(f->ox + f->ux * f->distance * u - f->uy * side, ex, SCREEN_WIDTH - ex);
+    const float sy = clampf(f->oy + f->uy * f->distance * u + f->ux * side, ey, SCREEN_HEIGHT - ey);
+
+    /* The image covers the rotated box plus a pixel for the bilinear edge */
+    const int32_t x0 = (int32_t)floorf(sx - ex) - 1;
+    const int32_t y0 = (int32_t)floorf(sy - ey) - 1;
+    const int32_t w = (int32_t)ceilf(sx + ex) + 1 - x0;
+    const int32_t h = (int32_t)ceilf(sy + ey) + 1 - y0;
+    const uint32_t stride = lv_draw_buf_width_to_stride(w, LV_COLOR_FORMAT_A8);
+    if (w <= 0 || h <= 0 || stride * h > f->buf_size) {
+        return;
+    }
+
+    /*
+     * Walk the image, mapping each pixel centre back into the master glyph:
+     * undo the rotation, then the scale. Along a row the glyph position
+     * moves by a constant step.
+     */
+    const float gcx = 0.5f * g->w - 0.5f;
+    const float gcy = 0.5f * g->h - 0.5f;
+    const float du = c * inv_scale;
+    const float dv = -s * inv_scale;
+    for (int32_t y = 0; y < h; y++) {
+        const float py = (float)(y0 + y) + 0.5f - sy;
+        const float px = (float)x0 + 0.5f - sx;
+        float gu = (c * px + s * py) * inv_scale + gcx;
+        float gv = (-s * px + c * py) * inv_scale + gcy;
+        uint8_t *row = f->buf + y * stride;
+        for (int32_t x = 0; x < w; x++) {
+            row[x] = glyph_sample(g, gu, gv);
+            gu += du;
+            gv += dv;
+        }
+    }
+
+    f->dsc.header.w = w;
+    f->dsc.header.h = h;
+    f->dsc.header.stride = stride;
+    f->dsc.data_size = stride * h;
+    lv_image_set_src(f->image, &f->dsc);
+    lv_obj_set_pos(f->image, x0, y0);
 
     /* Quick fade in, fully opaque through most of the flight, then a smooth fade out */
     const float fade_in = clampf(u * 12.0f, 0.0f, 1.0f);
     const float t = clampf((u - FADE_START) / (1.0f - FADE_START), 0.0f, 1.0f);
     const float alpha = fade_in * (1.0f - t * t * (3.0f - 2.0f * t));
-    lv_obj_set_style_text_opa(f->label, (lv_opa_t)(alpha * 255.0f), LV_PART_MAIN);
-
-    /* LVGL rotation is in tenths of a degree, about the label's centre */
-    lv_obj_set_style_transform_rotation(f->label, (int32_t)lroundf((f->tilt + f->spin * u) * 10.0f),
-                                        LV_PART_MAIN);
-
-    lv_obj_align(f->label, LV_ALIGN_CENTER, (int32_t)lroundf(sx - SCREEN_WIDTH / 2.0f),
-                 (int32_t)lroundf(sy - SCREEN_HEIGHT / 2.0f));
+    lv_obj_set_style_image_opa(f->image, (lv_opa_t)(alpha * 255.0f), LV_PART_MAIN);
 }
 
-static void flight_retire(struct flight *f) {
-    f->active = false;
-    lv_obj_add_flag(f->label, LV_OBJ_FLAG_HIDDEN);
+static struct flight *flight_oldest(const struct flight *except) {
+    struct flight *oldest = NULL;
+    for (int i = 0; i < FLIGHT_POOL; i++) {
+        struct flight *f = &flights[i];
+        if (f == except || !f->active) {
+            continue;
+        }
+        if (oldest == NULL || (int32_t)(f->start - oldest->start) < 0) {
+            oldest = f;
+        }
+    }
+    return oldest;
 }
 
 static void flight_launch(char c, uint32_t now) {
-    /* The first idle slot, or the oldest key in flight when none is idle */
-    struct flight *f = NULL;
-    for (int i = 0; i < FLIGHT_POOL; i++) {
-        if (!flights[i].active) {
-            f = &flights[i];
-            break;
-        }
-        if (f == NULL || (int32_t)(flights[i].start - f->start) < 0) {
-            f = &flights[i];
+    struct glyph glyphs[MASTER_COUNT];
+    for (size_t i = 0; i < MASTER_COUNT; i++) {
+        if (!glyph_get(masters[i], c, &glyphs[i])) {
+            return;
         }
     }
 
-    f->text[0] = c;
-    f->text[1] = '\0';
-    lv_label_set_text_static(f->label, f->text);
+    /* The first idle slot, or the oldest key in flight when none is idle */
+    struct flight *f = NULL;
+    for (int i = 0; i < FLIGHT_POOL && f == NULL; i++) {
+        if (!flights[i].active) {
+            f = &flights[i];
+        }
+    }
+    if (f == NULL) {
+        f = flight_oldest(NULL);
+        flight_retire(f);
+    }
+
+    /* Square room for the largest master glyph at any angle, plus bilinear edges */
+    const struct glyph *big = &glyphs[MASTER_COUNT - 1];
+    const uint32_t side = (uint32_t)ceilf(sqrtf((float)(big->w * big->w + big->h * big->h))) + 4;
+    const uint32_t bytes = lv_draw_buf_width_to_stride(side, LV_COLOR_FORMAT_A8) * side;
+    const size_t align = LV_DRAW_BUF_ALIGN > sizeof(void *) ? LV_DRAW_BUF_ALIGN : sizeof(void *);
+
+    uint8_t *buf = k_heap_aligned_alloc(&gossip_key_heap, align, bytes, K_NO_WAIT);
+    while (buf == NULL) {
+        /* Cut the oldest key short to make room; with none left, skip this one */
+        struct flight *oldest = flight_oldest(f);
+        if (oldest == NULL) {
+            return;
+        }
+        flight_retire(oldest);
+#if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
+        stat_cut_short++;
+#endif
+        buf = k_heap_aligned_alloc(&gossip_key_heap, align, bytes, K_NO_WAIT);
+    }
+
+    f->buf = buf;
+    f->buf_size = bytes;
+    f->dsc.data = buf;
+    memcpy(f->glyphs, glyphs, sizeof(glyphs));
 
     const float heading = rng_range(0.0f, 2.0f * PI_F);
     f->ux = cosf(heading);
@@ -326,9 +417,9 @@ static void flight_launch(char c, uint32_t now) {
     f->active = true;
 
     /* The newest key is the farthest away, so it draws beneath those already in flight */
-    lv_obj_move_background(f->label);
-    lv_obj_remove_flag(f->label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_background(f->image);
     flight_place(f, 0.0f);
+    lv_obj_remove_flag(f->image, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void flight_frame_cb(lv_timer_t *timer) {
@@ -407,28 +498,24 @@ static void flight_demo_cb(lv_timer_t *timer) {
 
 int zmk_widget_key_flight_init(lv_obj_t *parent) {
     rng_state = k_cycle_get_32() | 1;
-    draw_heap_install();
 
     for (int i = 0; i < FLIGHT_POOL; i++) {
         struct flight *f = &flights[i];
-        f->label = lv_label_create(parent);
+        f->dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+        f->dsc.header.cf = LV_COLOR_FORMAT_A8;
+
+        f->image = lv_image_create(parent);
         /*
-         * Set every style property a flight changes now, so later updates
-         * overwrite values in place instead of growing the label's style
-         * list in LVGL's pool while keys fly.
+         * An A8 image is drawn as a fill in its recolour, with image_opa as
+         * the fade. Every style property a flight changes is set now, so
+         * later updates overwrite values in place instead of growing the
+         * image's style list in LVGL's pool while keys fly.
          */
-        lv_obj_set_style_text_color(f->label, lv_color_hex(0xffffff), LV_PART_MAIN);
-        lv_obj_set_style_text_font(f->label, flight_fonts[0], LV_PART_MAIN);
-        lv_obj_set_style_text_opa(f->label, LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_set_style_transform_rotation(f->label, 0, LV_PART_MAIN);
-        /* Rotate about the centre, whatever size the key is at */
-        lv_obj_set_style_transform_pivot_x(f->label, lv_pct(50), LV_PART_MAIN);
-        lv_obj_set_style_transform_pivot_y(f->label, lv_pct(50), LV_PART_MAIN);
-        lv_obj_align(f->label, LV_ALIGN_CENTER, 0, 0);
-        f->text[0] = '\0';
-        lv_label_set_text_static(f->label, f->text);
-        f->font = 0;
-        lv_obj_add_flag(f->label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_image_recolor(f->image, lv_color_hex(KEY_COLOR), LV_PART_MAIN);
+        lv_obj_set_style_image_recolor_opa(f->image, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_image_opa(f->image, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_pos(f->image, 0, 0);
+        lv_obj_add_flag(f->image, LV_OBJ_FLAG_HIDDEN);
         f->active = false;
     }
 
