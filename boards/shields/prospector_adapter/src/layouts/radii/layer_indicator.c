@@ -136,34 +136,11 @@ static void layer_indicator_set_sel(struct zmk_widget_layer_indicator *widget, s
 }
 
 static void layer_indicator_update_cb(struct layer_indicator_state state) {
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-    /* The demo owns the wheel */
-    ARG_UNUSED(state);
-#else
     struct zmk_widget_layer_indicator *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         layer_indicator_set_sel(widget, state);
     }
-#endif
 }
-
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-/*
- * Radii has no WPM animation, so its demo turns the wheel through the
- * layers instead. An LVGL timer, so it runs on the display thread.
- */
-#define LAYER_DEMO_STEP_MS 2500
-
-static void layer_demo_cb(lv_timer_t *timer) {
-    static uint8_t index;
-    ARG_UNUSED(timer);
-    index = (index + 1) % ZMK_KEYMAP_LAYERS_LEN;
-    struct zmk_widget_layer_indicator *widget;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-        layer_indicator_set_sel(widget, (struct layer_indicator_state){.index = index});
-    }
-}
-#endif
 
 static struct layer_indicator_state layer_indicator_get_state(const zmk_event_t *eh) {
     uint8_t index = zmk_keymap_highest_layer_active();
@@ -204,10 +181,6 @@ int zmk_widget_layer_indicator_init(struct zmk_widget_layer_indicator *widget, l
 
     sys_slist_append(&widgets, &widget->node);
     widget_layer_indicator_init();
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-    layer_indicator_set_sel(widget, (struct layer_indicator_state){.index = 0});
-    lv_timer_create(layer_demo_cb, LAYER_DEMO_STEP_MS, NULL);
-#endif
     return 0;
 }
 

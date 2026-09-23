@@ -11,14 +11,6 @@
 
 #include <fonts.h>
 
-#if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
-#include <zephyr/logging/log.h>
-#include <zephyr/sys/atomic.h>
-#include <zephyr/sys/sys_heap.h>
-#include <lvgl_mem.h>
-LOG_MODULE_REGISTER(gossip, LOG_LEVEL_INF);
-#endif
-
 /*
  * Every printable key pressed on the keyboard appears at a random spot on
  * the screen and flies out toward the viewer along a random bent path:
@@ -123,49 +115,6 @@ static struct flight flights[FLIGHT_POOL];
 /* Filled by the event listener, drained on the display thread */
 K_MSGQ_DEFINE(key_flight_queue, sizeof(char), 16, 1);
 
-#if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
-/*
- * Diagnostic: once a second, log the frame rate the animation actually
- * gets (display refreshes that moved keys), the longest gap between them,
- * how many keys are in flight, were dropped from a full queue or cut short
- * to free memory, and how full the key heap and LVGL's pool are.
- */
-static atomic_t stat_dropped;
-static uint32_t stat_cut_short;
-static uint32_t stat_frames;
-static uint32_t stat_worst_gap;
-static uint32_t stat_last_frame;
-static uint32_t stat_window_start;
-
-static void stats_frame(uint32_t now, int in_flight) {
-    if (stat_last_frame != 0 && now - stat_last_frame > stat_worst_gap) {
-        stat_worst_gap = now - stat_last_frame;
-    }
-    stat_last_frame = now;
-    stat_frames++;
-
-    if (now - stat_window_start < 1000) {
-        return;
-    }
-
-    struct sys_memory_stats keys;
-    struct sys_memory_stats pool;
-    sys_heap_runtime_stats_get(&gossip_key_heap.heap, &keys);
-    lvgl_heap_stats(&pool);
-
-    LOG_INF("fps %u, worst gap %u ms, in flight %d, dropped %d, cut short %u | key heap used %u "
-            "peak %u free %u | lvgl pool used %u peak %u free %u",
-            stat_frames * 1000 / (now - stat_window_start), stat_worst_gap, in_flight,
-            (int)atomic_get(&stat_dropped), stat_cut_short, keys.allocated_bytes,
-            keys.max_allocated_bytes, keys.free_bytes, pool.allocated_bytes,
-            pool.max_allocated_bytes, pool.free_bytes);
-
-    stat_frames = 0;
-    stat_worst_gap = 0;
-    stat_window_start = now;
-}
-#endif
-
 static uint32_t rng_state = 1;
 
 static uint32_t rng_next(void) {
@@ -252,9 +201,12 @@ static inline uint8_t glyph_sample(const struct glyph *g, float u, float v) {
     const int32_t y = (int32_t)fy;
     const float ax = u - fx;
     const float ay = v - fy;
-    const float top = glyph_px(g, x, y) + (glyph_px(g, x + 1, y) - glyph_px(g, x, y)) * ax;
-    const float bottom =
-        glyph_px(g, x, y + 1) + (glyph_px(g, x + 1, y + 1) - glyph_px(g, x, y + 1)) * ax;
+    const float p00 = glyph_px(g, x, y);
+    const float p10 = glyph_px(g, x + 1, y);
+    const float p01 = glyph_px(g, x, y + 1);
+    const float p11 = glyph_px(g, x + 1, y + 1);
+    const float top = p00 + (p10 - p00) * ax;
+    const float bottom = p01 + (p11 - p01) * ax;
     return (uint8_t)(top + (bottom - top) * ay + 0.5f);
 }
 
@@ -394,9 +346,6 @@ static void flight_launch(char c, uint32_t now) {
             return;
         }
         flight_retire(oldest);
-#if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
-        stat_cut_short++;
-#endif
         buf = k_heap_aligned_alloc(&gossip_key_heap, align, bytes, K_NO_WAIT);
     }
 
@@ -447,7 +396,6 @@ static void flight_refresh_cb(lv_event_t *e) {
     ARG_UNUSED(e);
     const uint32_t now = lv_tick_get();
 
-    int in_flight = 0;
     for (int i = 0; i < FLIGHT_POOL; i++) {
         struct flight *f = &flights[i];
         if (!f->active) {
@@ -458,15 +406,8 @@ static void flight_refresh_cb(lv_event_t *e) {
             flight_retire(f);
         } else {
             flight_place(f, u);
-            in_flight++;
         }
     }
-
-#if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
-    stats_frame(now, in_flight);
-#else
-    ARG_UNUSED(in_flight);
-#endif
 }
 
 static int key_flight_listener(const zmk_event_t *eh) {
@@ -479,38 +420,13 @@ static int key_flight_listener(const zmk_event_t *eh) {
     const char c = usage_to_char(ev->keycode, (mods & (MOD_LSFT | MOD_RSFT)) != 0);
     if (c) {
         /* A full queue drops the key rather than hold up typing */
-        if (k_msgq_put(&key_flight_queue, &c, K_NO_WAIT) != 0) {
-#if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
-            atomic_inc(&stat_dropped);
-#endif
-        }
+        k_msgq_put(&key_flight_queue, &c, K_NO_WAIT);
     }
     return ZMK_EV_EVENT_BUBBLE;
 }
 
 ZMK_LISTENER(gossip_key_flight, key_flight_listener);
 ZMK_SUBSCRIPTION(gossip_key_flight, zmk_keycode_state_changed);
-
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-/* Types a sentence on a loop, with a typist's uneven rhythm, so keys fly with nothing paired */
-static const char demo_text[] = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG, 1234567890! ";
-static uint32_t demo_next;
-static size_t demo_pos;
-
-static void flight_demo_cb(lv_timer_t *timer) {
-    ARG_UNUSED(timer);
-    const uint32_t now = lv_tick_get();
-    if ((int32_t)(now - demo_next) < 0) {
-        return;
-    }
-    const char c = demo_text[demo_pos];
-    demo_pos = (demo_pos + 1) % (sizeof(demo_text) - 1);
-    if (c != ' ') {
-        k_msgq_put(&key_flight_queue, &c, K_NO_WAIT);
-    }
-    demo_next = now + (uint32_t)rng_range(70.0f, 230.0f) + ((rng_next() & 15) == 0 ? 600 : 0);
-}
-#endif
 
 int zmk_widget_key_flight_init(lv_obj_t *parent) {
     rng_state = k_cycle_get_32() | 1;
@@ -538,8 +454,5 @@ int zmk_widget_key_flight_init(lv_obj_t *parent) {
     lv_timer_create(flight_launch_cb, LAUNCH_POLL_MS, NULL);
     lv_display_add_event_cb(lv_display_get_default(), flight_refresh_cb, LV_EVENT_REFR_START,
                             NULL);
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-    lv_timer_create(flight_demo_cb, 20, NULL);
-#endif
     return 0;
 }

@@ -172,10 +172,6 @@ static float lines_noise(float x, float y, float t) {
 }
 
 static int wpm_event_handler(const zmk_event_t *eh) {
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-    /* The demo owns the animation; ignore real typing so the two cannot fight */
-    return ZMK_EV_EVENT_BUBBLE;
-#endif
     const struct zmk_wpm_state_changed *ev = as_zmk_wpm_state_changed(eh);
     if (ev) {
         uint32_t now = k_uptime_get_32();
@@ -409,44 +405,6 @@ static void timer_cb(lv_timer_t *timer) {
     }
 }
 
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-/*
- * Feed a synthetic typing rhythm into the animation so the panel can be
- * judged in motion with nothing paired. Each cycle ramps up to half again
- * the reference WPM and back down over the configured period, then rests at
- * zero for half a period so the fade and settle after typing stops is
- * visible too, which is most of what makes Field look like Field.
- */
-#define LINE_DEMO_STEP_MS 100
-
-static struct k_work_delayable line_demo_work;
-
-static void line_demo_work_handler(struct k_work *work) {
-    static uint32_t elapsed_ms;
-    const uint32_t period = CONFIG_PROSPECTOR_DEMO_WPM_PERIOD_MS;
-    const uint32_t cycle = period + period / 2U;
-    const uint32_t half = period / 2U;
-    const int peak = CONFIG_PROSPECTOR_ANIMATION_WPM_REFERENCE * 3 / 2;
-    uint32_t pos;
-
-    elapsed_ms = (elapsed_ms + LINE_DEMO_STEP_MS) % cycle;
-
-    if (elapsed_ms < period) {
-        pos = (elapsed_ms < half) ? elapsed_ms : (period - elapsed_ms);
-        current_wpm = (int)((pos * (uint32_t)peak) / half);
-    } else {
-        current_wpm = 0;
-    }
-
-    if (current_wpm > 0) {
-        last_keypress_time = k_uptime_get_32();
-        animation_started = true;
-    }
-
-    k_work_schedule(&line_demo_work, K_MSEC(LINE_DEMO_STEP_MS));
-}
-#endif /* CONFIG_PROSPECTOR_DEMO_WPM */
-
 int zmk_widget_line_segments_init(struct zmk_widget_line_segments *widget, lv_obj_t *parent) {
     init_lut();
 
@@ -472,11 +430,6 @@ int zmk_widget_line_segments_init(struct zmk_widget_line_segments *widget, lv_ob
     if (animation_timer == NULL) {
         animation_timer = lv_timer_create(timer_cb, 33, NULL);
     }
-
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-    k_work_init_delayable(&line_demo_work, line_demo_work_handler);
-    k_work_schedule(&line_demo_work, K_MSEC(1000));
-#endif
 
     return 0;
 }

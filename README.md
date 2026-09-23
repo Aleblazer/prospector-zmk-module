@@ -100,7 +100,7 @@ CONFIG_PROSPECTOR_STATUS_SCREEN_GOSSIP=y
 
 Gossip shows almost nothing until you type. Each letter, number or symbol
 you press appears at a random spot and flies toward you along a random
-curved path, growing and fading as it passes. The only fixed elements are
+curved path, growing, tilting and turning, and fading as it passes. The only fixed elements are
 the layer name in the bottom-left corner and one small battery bar per
 peripheral in the bottom-right, amber below 20%. Its fonts are generated
 from [DINish](https://github.com/playbeing/dinish) (OFL-1.1).
@@ -130,13 +130,6 @@ To customize, add config options to your `.conf` file:
 CONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n
 CONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80
 ```
-
-### Bring-up
-
-| Name | Description | Default |
-| ---- | ----------- | ------- |
-| `CONFIG_PROSPECTOR_DEMO_WPM` | Animate the layout with nothing paired, for bring-up and photos: a synthetic typing rhythm for Operator and Field, a layer change every 2.5 s for Classic and Radii (plus sample battery levels on Radii), and a sample sentence typed on a loop for Gossip. Real WPM and layer events are ignored while it is on | n |
-| `CONFIG_PROSPECTOR_DEMO_WPM_PERIOD_MS` | One full rise and fall | 6000 |
 
 ### General
 | Name | Description | Default |

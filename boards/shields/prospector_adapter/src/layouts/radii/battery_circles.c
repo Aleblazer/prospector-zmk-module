@@ -32,22 +32,23 @@ static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 static lv_obj_t *peripheral_arcs[PERIPHERAL_COUNT];
 static lv_obj_t *peripheral_labels[PERIPHERAL_COUNT];
 
-struct battery_update_state {
-    uint8_t source;
-    uint8_t level;
+/*
+ * Every peripheral's charge and link. ZMK's display listener keeps one state
+ * value and applies the latest when its work runs, so a state holding only
+ * the event's own peripheral lost the other one's update whenever both
+ * reported before the display thread got to them; a lost connection left
+ * that ring empty for good. Carrying the whole table makes every state
+ * complete. It is only touched in the state function, which ZMK serialises.
+ */
+struct battery_circles_state {
+    uint8_t level[PERIPHERAL_COUNT];
+    bool connected[PERIPHERAL_COUNT];
 };
 
-struct connection_update_state {
-    uint8_t source;
-    bool connected;
-};
+static struct battery_circles_state battery_table;
 
-static void update_peripheral_display(uint8_t source, uint8_t level, bool connected) {
-    if (source >= MAX_DISPLAYED) {
-        return;
-    }
-
-    lv_obj_t *arc = peripheral_arcs[source];
+static void update_peripheral_display(int i, uint8_t level, bool connected) {
+    lv_obj_t *arc = peripheral_arcs[i];
     if (!arc) {
         return;
     }
@@ -59,90 +60,44 @@ static void update_peripheral_display(uint8_t source, uint8_t level, bool connec
 
     /* Blank until a level arrives, rather than a misleading 0 */
     if (connected && level > 0) {
-        lv_label_set_text_fmt(peripheral_labels[source], "%d", level);
+        lv_label_set_text_fmt(peripheral_labels[i], "%d", level);
     } else {
-        lv_label_set_text(peripheral_labels[source], "");
+        lv_label_set_text(peripheral_labels[i], "");
     }
 }
 
-static uint8_t peripheral_battery[PERIPHERAL_COUNT];
-static bool peripheral_connected[PERIPHERAL_COUNT];
-
-static void set_battery_level(uint8_t source, uint8_t level) {
-    if (source >= MAX_DISPLAYED) {
-        return;
-    }
-    peripheral_battery[source] = level;
-    update_peripheral_display(source, level, peripheral_connected[source]);
-}
-
-static void set_connection_status(uint8_t source, bool connected) {
-    if (source >= MAX_DISPLAYED) {
-        return;
-    }
-    peripheral_connected[source] = connected;
-    update_peripheral_display(source, peripheral_battery[source], connected);
-}
-
-void battery_circles_battery_update_cb(struct battery_update_state state) {
+static void battery_circles_update_cb(struct battery_circles_state state) {
     struct zmk_widget_battery_circles *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         if (widget->initialized) {
-            set_battery_level(state.source, state.level);
+            for (int i = 0; i < MAX_DISPLAYED; i++) {
+                update_peripheral_display(i, state.level[i], state.connected[i]);
+            }
         }
     }
 }
 
-static struct battery_update_state battery_circles_get_battery_state(const zmk_event_t *eh) {
-    if (eh == NULL) {
-        return (struct battery_update_state){.source = 0, .level = 0};
-    }
+static struct battery_circles_state battery_circles_get_state(const zmk_event_t *eh) {
+    if (eh != NULL) {
+        const struct zmk_peripheral_battery_state_changed *bat =
+            as_zmk_peripheral_battery_state_changed(eh);
+        if (bat != NULL && bat->source < PERIPHERAL_COUNT) {
+            battery_table.level[bat->source] = bat->state_of_charge;
+        }
 
-    const struct zmk_peripheral_battery_state_changed *bat_ev =
-        as_zmk_peripheral_battery_state_changed(eh);
-    if (bat_ev == NULL) {
-        return (struct battery_update_state){.source = 0, .level = 0};
-    }
-
-    return (struct battery_update_state){
-        .source = bat_ev->source,
-        .level = bat_ev->state_of_charge,
-    };
-}
-
-void battery_circles_connection_update_cb(struct connection_update_state state) {
-    struct zmk_widget_battery_circles *widget;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-        if (widget->initialized) {
-            set_connection_status(state.source, state.connected);
+        const struct zmk_split_central_status_changed *conn =
+            as_zmk_split_central_status_changed(eh);
+        if (conn != NULL && conn->slot < PERIPHERAL_COUNT) {
+            battery_table.connected[conn->slot] = conn->connected;
         }
     }
+    return battery_table;
 }
 
-static struct connection_update_state battery_circles_get_connection_state(const zmk_event_t *eh) {
-    if (eh == NULL) {
-        return (struct connection_update_state){.source = 0, .connected = false};
-    }
-
-    const struct zmk_split_central_status_changed *conn_ev =
-        as_zmk_split_central_status_changed(eh);
-    if (conn_ev == NULL) {
-        return (struct connection_update_state){.source = 0, .connected = false};
-    }
-
-    return (struct connection_update_state){
-        .source = conn_ev->slot,
-        .connected = conn_ev->connected,
-    };
-}
-
-ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_circles_battery, struct battery_update_state,
-                            battery_circles_battery_update_cb, battery_circles_get_battery_state);
-ZMK_SUBSCRIPTION(widget_battery_circles_battery, zmk_peripheral_battery_state_changed);
-
-ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_circles_connection, struct connection_update_state,
-                            battery_circles_connection_update_cb, battery_circles_get_connection_state);
-ZMK_SUBSCRIPTION(widget_battery_circles_connection, zmk_split_central_status_changed);
+ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_circles, struct battery_circles_state,
+                            battery_circles_update_cb, battery_circles_get_state);
+ZMK_SUBSCRIPTION(widget_battery_circles, zmk_peripheral_battery_state_changed);
+ZMK_SUBSCRIPTION(widget_battery_circles, zmk_split_central_status_changed);
 
 static lv_obj_t *create_arc(lv_obj_t *parent, int size, int x, int y, int width) {
     lv_obj_t *arc = lv_arc_create(parent);
@@ -193,20 +148,9 @@ int zmk_widget_battery_circles_init(struct zmk_widget_battery_circles *widget, l
         lv_obj_align(peripheral_labels[i], LV_ALIGN_CENTER, 0, 1);
     }
 
-    widget_battery_circles_battery_init();
-    widget_battery_circles_connection_init();
-
     widget->initialized = true;
     sys_slist_append(&widgets, &widget->node);
-
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-    /* Something to read with nothing paired; real events still replace it */
-    static const uint8_t demo_levels[] = {82, 47, 64};
-    for (int i = 0; i < MAX_DISPLAYED; i++) {
-        set_connection_status(i, true);
-        set_battery_level(i, demo_levels[i]);
-    }
-#endif
+    widget_battery_circles_init();
 
     return 0;
 }

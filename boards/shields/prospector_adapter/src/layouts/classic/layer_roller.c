@@ -202,13 +202,14 @@ struct layer_roller_state {
     uint8_t index;
 };
 
+static bool load_names(void);
+
 static void layer_roller_update_cb(struct layer_roller_state state) {
-#if !IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
+    /* Pick up layers renamed in ZMK Studio since the last layer change */
+    if (load_names()) {
+        carousel_layout(carousel_pos);
+    }
     carousel_go_to(state.index);
-#else
-    /* The demo owns the carousel */
-    ARG_UNUSED(state);
-#endif
 }
 
 static struct layer_roller_state layer_roller_get_state(const zmk_event_t *eh) {
@@ -221,34 +222,37 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_layer_roller, struct layer_roller_state, laye
                             layer_roller_get_state)
 ZMK_SUBSCRIPTION(widget_layer_roller, zmk_layer_state_changed);
 
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-/*
- * Classic has no WPM animation, so its demo steps through the layers instead,
- * which exercises the carousel's slide. An LVGL timer, so it runs on the
- * display thread alongside the rest of the UI.
- */
-#define CAROUSEL_DEMO_STEP_MS 2500
+/* Reads every layer's name and measures it; true if any name changed */
+static bool load_names(void) {
+    bool changed = false;
 
-static void carousel_demo_cb(lv_timer_t *timer) {
-    ARG_UNUSED(timer);
-    carousel_go_to(layer_of(floor_div(carousel_pos + 500, 1000) + 1));
-}
-#endif
-
-static void load_names(void) {
     for (int i = 0; i < LAYER_COUNT; i++) {
         const char *name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(i));
+        char fresh[CAROUSEL_NAME_MAX];
 
         if (name && *name) {
-            snprintf(names[i], sizeof(names[i]), "%s", name);
+            snprintf(fresh, sizeof(fresh), "%s", name);
         } else {
-            snprintf(names[i], sizeof(names[i]), "%d", i);
+            snprintf(fresh, sizeof(fresh), "%d", i);
+        }
+        if (strcmp(fresh, names[i]) == 0) {
+            continue;
+        }
+        memcpy(names[i], fresh, sizeof(fresh));
+        changed = true;
+
+        /* Slots showing this layer point at the buffer; make them re-read it */
+        for (int s = 0; s < CAROUSEL_SLOTS; s++) {
+            if (slot_layer[s] == i) {
+                slot_layer[s] = -1;
+            }
         }
 
         const uint32_t len = strlen(names[i]);
         width_active[i] = lv_text_get_width(names[i], len, &FR_Regular_48, 0);
         width_neighbour[i] = lv_text_get_width(names[i], len, &FR_Thin_48, 0);
     }
+    return changed;
 }
 
 int zmk_widget_layer_roller_init(struct zmk_widget_layer_roller *widget, lv_obj_t *parent) {
@@ -274,12 +278,8 @@ int zmk_widget_layer_roller_init(struct zmk_widget_layer_roller *widget, lv_obj_
     carousel_pos = (int32_t)zmk_keymap_highest_layer_active() * 1000;
     carousel_layout(carousel_pos);
 
-    /* Registered in the demo too; its update callback ignores real events there */
     widget_layer_roller_init();
 
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-    lv_timer_create(carousel_demo_cb, CAROUSEL_DEMO_STEP_MS, NULL);
-#endif
     return 0;
 }
 

@@ -29,71 +29,59 @@
 #define COLOR_LOW 0xe0a020
 
 static lv_obj_t *fills[PERIPHERAL_COUNT];
-static uint8_t levels[PERIPHERAL_COUNT];
-static bool connected[PERIPHERAL_COUNT];
 
-static void tick_refresh(uint8_t source) {
-    if (source >= TICKS_SHOWN || fills[source] == NULL) {
+/*
+ * Every peripheral's charge and link. ZMK's display listener keeps one state
+ * value and applies the latest when its work runs, so a state holding only
+ * the event's own peripheral lost the other one's update whenever both
+ * reported before the display thread got to them; a lost connection left
+ * that bar empty for good. Carrying the whole table makes every state
+ * complete. It is only touched in the state function, which ZMK serialises.
+ */
+struct gossip_battery_state {
+    uint8_t level[PERIPHERAL_COUNT];
+    bool connected[PERIPHERAL_COUNT];
+};
+
+static struct gossip_battery_state battery_table;
+
+static void tick_show(int i, uint8_t level) {
+    if (fills[i] == NULL) {
         return;
     }
-    const uint8_t level = connected[source] ? levels[source] : 0;
-    lv_obj_set_width(fills[source], (TICK_WIDTH * level + 50) / 100);
-    lv_obj_set_style_bg_color(fills[source],
+    lv_obj_set_width(fills[i], (TICK_WIDTH * level + 50) / 100);
+    lv_obj_set_style_bg_color(fills[i],
                               lv_color_hex(level < TICK_LOW_LEVEL ? COLOR_LOW : COLOR_FILL),
                               LV_PART_MAIN);
 }
 
-struct gossip_battery_state {
-    uint8_t source;
-    uint8_t level;
-};
-
 static void gossip_battery_update_cb(struct gossip_battery_state state) {
-    if (state.source >= TICKS_SHOWN) {
-        return;
+    for (int i = 0; i < TICKS_SHOWN; i++) {
+        tick_show(i, state.connected[i] ? state.level[i] : 0);
     }
-    levels[state.source] = state.level;
-    tick_refresh(state.source);
 }
 
 static struct gossip_battery_state gossip_battery_get_state(const zmk_event_t *eh) {
-    const struct zmk_peripheral_battery_state_changed *ev =
-        eh ? as_zmk_peripheral_battery_state_changed(eh) : NULL;
-    if (ev == NULL) {
-        return (struct gossip_battery_state){.source = 0, .level = levels[0]};
+    if (eh != NULL) {
+        const struct zmk_peripheral_battery_state_changed *bat =
+            as_zmk_peripheral_battery_state_changed(eh);
+        if (bat != NULL && bat->source < PERIPHERAL_COUNT) {
+            battery_table.level[bat->source] = bat->state_of_charge;
+        }
+
+        const struct zmk_split_central_status_changed *conn =
+            as_zmk_split_central_status_changed(eh);
+        if (conn != NULL && conn->slot < PERIPHERAL_COUNT) {
+            battery_table.connected[conn->slot] = conn->connected;
+        }
     }
-    return (struct gossip_battery_state){.source = ev->source, .level = ev->state_of_charge};
+    return battery_table;
 }
 
 ZMK_DISPLAY_WIDGET_LISTENER(widget_gossip_battery, struct gossip_battery_state,
                             gossip_battery_update_cb, gossip_battery_get_state)
 ZMK_SUBSCRIPTION(widget_gossip_battery, zmk_peripheral_battery_state_changed);
-
-struct gossip_connection_state {
-    uint8_t source;
-    bool connected;
-};
-
-static void gossip_connection_update_cb(struct gossip_connection_state state) {
-    if (state.source >= TICKS_SHOWN) {
-        return;
-    }
-    connected[state.source] = state.connected;
-    tick_refresh(state.source);
-}
-
-static struct gossip_connection_state gossip_connection_get_state(const zmk_event_t *eh) {
-    const struct zmk_split_central_status_changed *ev =
-        eh ? as_zmk_split_central_status_changed(eh) : NULL;
-    if (ev == NULL) {
-        return (struct gossip_connection_state){.source = 0, .connected = connected[0]};
-    }
-    return (struct gossip_connection_state){.source = ev->slot, .connected = ev->connected};
-}
-
-ZMK_DISPLAY_WIDGET_LISTENER(widget_gossip_connection, struct gossip_connection_state,
-                            gossip_connection_update_cb, gossip_connection_get_state)
-ZMK_SUBSCRIPTION(widget_gossip_connection, zmk_split_central_status_changed);
+ZMK_SUBSCRIPTION(widget_gossip_battery, zmk_split_central_status_changed);
 
 lv_obj_t *zmk_widget_gossip_battery_init(lv_obj_t *parent) {
     lv_obj_t *row = lv_obj_create(parent);
@@ -120,17 +108,6 @@ lv_obj_t *zmk_widget_gossip_battery_init(lv_obj_t *parent) {
     }
 
     widget_gossip_battery_init();
-    widget_gossip_connection_init();
-
-#if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
-    /* Something to show with nothing paired; real events still replace it */
-    static const uint8_t demo_levels[] = {82, 47, 15};
-    for (int i = 0; i < TICKS_SHOWN; i++) {
-        levels[i] = demo_levels[i];
-        connected[i] = true;
-        tick_refresh(i);
-    }
-#endif
 
     return row;
 }
