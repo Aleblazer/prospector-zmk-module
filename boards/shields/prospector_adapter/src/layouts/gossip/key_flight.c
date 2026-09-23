@@ -33,8 +33,9 @@ LOG_MODULE_REGISTER(gossip, LOG_LEVEL_INF);
  * filled 40 KB with layers until it crashed. Rendering here also makes the
  * growth continuous instead of stepping through font sizes.
  *
- * Keys are queued by the event listener and launched from an LVGL timer, so
- * all LVGL calls stay on the display thread.
+ * Keys are queued by the event listener and launched from an LVGL timer;
+ * keys in flight move at the start of each display refresh, so every frame
+ * shows exactly one fresh step. All LVGL calls stay on the display thread.
  */
 
 #define SCREEN_WIDTH 428
@@ -42,7 +43,9 @@ LOG_MODULE_REGISTER(gossip, LOG_LEVEL_INF);
 
 /* Keys in flight at once; a new key takes over the oldest when all are busy */
 #define FLIGHT_POOL 12
-#define FRAME_MS 30
+
+/* How often queued keys are launched; ZMK runs LVGL every 10 ms */
+#define LAUNCH_POLL_MS 20
 
 /*
  * A key grows from 12 px to 72 px, reaching full size 85% of the way
@@ -123,7 +126,7 @@ K_MSGQ_DEFINE(key_flight_queue, sizeof(char), 16, 1);
 #if IS_ENABLED(CONFIG_PROSPECTOR_GOSSIP_STATS)
 /*
  * Diagnostic: once a second, log the frame rate the animation actually
- * gets, the longest gap between frames, how many keys are in flight, were
+ * gets (display refreshes that moved keys), the longest gap between them, how many keys are in flight, were
  * dropped from a full queue or cut short to free memory, and how full the
  * key heap and LVGL's pool are.
  */
@@ -422,14 +425,27 @@ static void flight_launch(char c, uint32_t now) {
     lv_obj_remove_flag(f->image, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void flight_frame_cb(lv_timer_t *timer) {
+static void flight_launch_cb(lv_timer_t *timer) {
     ARG_UNUSED(timer);
     const uint32_t now = lv_tick_get();
 
+    /* Launching invalidates the new key, which wakes the display refresh */
     char c;
     while (k_msgq_get(&key_flight_queue, &c, K_NO_WAIT) == 0) {
         flight_launch(c, now);
     }
+}
+
+/*
+ * Runs as each display refresh starts, before layout and drawing, so the
+ * keys drawn are the keys just placed. Moving a key invalidates it, which
+ * schedules the next refresh, so this repeats every refresh period while
+ * any key is in flight and stops when the last one lands. A separate timer
+ * beat against the refresh period and skipped frames.
+ */
+static void flight_refresh_cb(lv_event_t *e) {
+    ARG_UNUSED(e);
+    const uint32_t now = lv_tick_get();
 
     int in_flight = 0;
     for (int i = 0; i < FLIGHT_POOL; i++) {
@@ -519,7 +535,9 @@ int zmk_widget_key_flight_init(lv_obj_t *parent) {
         f->active = false;
     }
 
-    lv_timer_create(flight_frame_cb, FRAME_MS, NULL);
+    lv_timer_create(flight_launch_cb, LAUNCH_POLL_MS, NULL);
+    lv_display_add_event_cb(lv_display_get_default(), flight_refresh_cb, LV_EVENT_REFR_START,
+                            NULL);
 #if IS_ENABLED(CONFIG_PROSPECTOR_DEMO_WPM)
     lv_timer_create(flight_demo_cb, 20, NULL);
 #endif

@@ -6,12 +6,12 @@ config ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     select LV_USE_FLEX
     select LV_COLOR_SCREEN_TRANSP
 
-# Key images live in a heap of their own in key_flight.c. LVGL's pool
-# holds the draw tasks and image decoder state for up to 12 moving images
-# each frame, which peaked near 10 KB in testing, so it gets some headroom
-# over the shield's 16 KB.
-config LV_Z_MEM_POOL_SIZE
-    default 24576
+# ZMK runs LVGL every 10 ms, so LVGL's default 33 ms refresh period
+# lands on 40 ms: 25 frames a second. 30 ms lines up with the ticks for
+# about 33. Keys move once per refresh (key_flight.c); the display thread
+# measured about 55% busy at 25 frames a second, so there is room.
+config LV_DEF_REFR_PERIOD
+    default 30
 
 config PROSPECTOR_GOSSIP_STATS
     bool "Log Gossip's frame rate and memory use once a second"
