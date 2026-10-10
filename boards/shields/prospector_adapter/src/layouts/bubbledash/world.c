@@ -219,11 +219,11 @@ static void draw_trees(void) {
     const int32_t k0 = (int32_t)floor(ho / 46.0) - 1;
     for (int32_t k = k0; k < k0 + 12; k++) {
         const float hk = bd_hash((uint32_t)k);
-        const float tx = (float)(k * 46.0 + hk * 20.0 - ho);
+        const float tx = (float)(k * 46.0 + (double)hk * 20.0 - ho);
         if (tx < -24 || tx > BD_W + 24) {
             continue;
         }
-        const float by = BD_GY - hill_h((float)fmod(k * 46.0 + hk * 20.0, 400.0)) + 2;
+        const float by = BD_GY - hill_h((float)fmod(k * 46.0 + (double)hk * 20.0, 400.0)) + 2;
         const float th = 10 + bd_hash((uint32_t)(k + 5)) * 8;
         const float cr = 7 + bd_hash((uint32_t)(k + 9)) * 3;
         const int x = (int)tx;
@@ -347,7 +347,7 @@ void bd_world_draw_back(void) {
 
     const int32_t s0 = (int32_t)floor(scroll / 37.0) - 1;
     for (int32_t k = s0; k < s0 + 14; k++) {
-        const float sx = (float)(k * 37.0 + bd_hash((uint32_t)k) * 20.0 - scroll);
+        const float sx = (float)(k * 37.0 + (double)bd_hash((uint32_t)k) * 20.0 - scroll);
         bd_ellipse(sx, BD_GY + 10 + bd_hash((uint32_t)(k + 3)) * 8,
                    3 + bd_hash((uint32_t)(k + 1)) * 3, 2 + bd_hash((uint32_t)(k + 2)) * 1.5f, R.stone);
     }
@@ -358,7 +358,7 @@ void bd_world_draw_front(void) {
     const double fo = scroll * 1.7;
     const int32_t f0 = (int32_t)floor(fo / 170.0) - 1;
     for (int32_t k = f0; k < f0 + 5; k++) {
-        const float bx = (float)(k * 170.0 + bd_hash((uint32_t)k) * 80.0 - fo);
+        const float bx = (float)(k * 170.0 + (double)bd_hash((uint32_t)k) * 80.0 - fo);
         if (bx < -40 || bx > BD_W + 20) {
             continue;
         }

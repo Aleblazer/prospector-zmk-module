@@ -170,7 +170,7 @@ static void step(int64_t now) {
     speed += (target - speed) * 0.05f;
     boost *= 0.95f;
     const float sp = speed + boost;
-    scroll += sp;
+    scroll += (double)sp;
 
     gait = sp < 0.1f ? G_IDLE : sp < 1 ? G_WALK : sp < 2 ? G_RUN : G_SPRINT;
     if (gait != G_IDLE) {
