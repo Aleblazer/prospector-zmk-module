@@ -1,0 +1,11 @@
+if PROSPECTOR_STATUS_SCREEN_BUBBLEDASH
+
+# LVGL only ever draws one black screen; BubbleDash renders in its own
+# 16-row strips. A small single draw buffer frees about 42 KB.
+config LV_Z_VDB_SIZE
+    default 5
+
+config LV_Z_DOUBLE_VDB
+    default n
+
+endif

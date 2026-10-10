@@ -57,4 +57,10 @@ LV_FONT_DECLARE(DINish_SemiBold_A8_36);
 LV_FONT_DECLARE(DINish_SemiBold_A8_72);
 LV_FONT_DECLARE(DINishCondensed_SemiBold_28);
 
+#elif defined(CONFIG_PROSPECTOR_STATUS_SCREEN_BUBBLEDASH)
+
+/* The layer name and the triple-jump banner, drawn by bubbledash.c */
+LV_FONT_DECLARE(DINishCondensed_SemiBold_20);
+LV_FONT_DECLARE(DINishCondensed_SemiBold_28);
+
 #endif

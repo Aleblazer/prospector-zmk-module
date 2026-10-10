@@ -96,6 +96,7 @@ CONFIG_PROSPECTOR_STATUS_SCREEN_RADII=y
 CONFIG_PROSPECTOR_STATUS_SCREEN_FIELD=y
 CONFIG_PROSPECTOR_STATUS_SCREEN_OPERATOR=y
 CONFIG_PROSPECTOR_STATUS_SCREEN_GOSSIP=y
+CONFIG_PROSPECTOR_STATUS_SCREEN_BUBBLEDASH=y
 ```
 
 Gossip shows almost nothing until you type. Each letter, number or symbol
@@ -104,6 +105,14 @@ curved path, growing, tilting and turning, and fading as it passes. The only fix
 the layer name in the bottom-left corner and one small battery bar per
 peripheral in the bottom-right, amber below 20%. Its fonts are generated
 from [DINish](https://github.com/playbeing/dinish) (OFL-1.1).
+
+BubbleDash is a little pixel-art game. A round mint mascot strolls across a
+parallax landscape of mountains, hills, trees and a fence, and runs faster
+the faster you type. Key presses set off random hops, spins, flips and long
+jumps; above 85 WPM he chains a triple jump. Each layer has its own scenery
+(sunset, night, day, repeating), with the layer name in the top-left corner
+and the battery bars in the top-right. BubbleDash draws the screen itself
+in 16-row strips instead of through LVGL, which keeps its RAM use low.
 
 ## Usage
 

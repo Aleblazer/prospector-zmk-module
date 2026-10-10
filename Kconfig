@@ -28,6 +28,12 @@ config PROSPECTOR_STATUS_SCREEN_GOSSIP
         Every key you type flies out of the screen toward you along a
         random path, with only a small layer name and battery bars
 
+config PROSPECTOR_STATUS_SCREEN_BUBBLEDASH
+    bool "BubbleDash layout"
+    help
+        A pixel-art mascot runs across a parallax landscape as fast as
+        you type, jumping at random and triple-jumping at high WPM
+
 endchoice
 
 config PROSPECTOR_ROTATE_DISPLAY_180
